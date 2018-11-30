@@ -1,0 +1,77 @@
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" type="text/css" href="style.css">
+  <link href="https://fonts.googleapis.com/css?family=Montserrat" rel="stylesheet">
+
+  <script language="javascript" type="text/javascript" src="./lib/p5.js"></script>
+  <script language="javascript" src="./lib/p5.dom.js"></script>
+  <script language="javascript" src="./lib/p5.sound.js"></script>
+  <script language="javascript" src="./lib/dsp.js"></script>
+  
+  <script src="https://cdn.jsdelivr.net/npm/webmidi@2.0.0"></script>
+  <script language="javascript" src="./lib/three.js"></script>
+  <script language="javascript" src="./lib/pulsegeneratorWorker.js"></script>
+  
+  <script language="javascript" src="./SYNTH64.js"></script>
+
+
+  <script type="x-shader/x-vertex" id="vertexShader">
+      
+    uniform vec3 lowcolor;
+    uniform vec3 highcolor;
+    uniform float wavesize;
+    uniform float wavearray[128];
+    
+    attribute float pindex;
+    
+    varying vec3 vColor;
+          
+    void main() {
+      vColor = mix(lowcolor, highcolor, abs(wavearray[ int(pindex) ]) );
+      gl_Position = projectionMatrix * modelViewMatrix * vec4( vec3(position.x,wavearray[ int(pindex) ] * wavesize, position.z), 1.0 );
+    }
+
+  </script>
+
+   <script type="x-shader/x-vertex" id="fragmentShader">
+    varying vec3 vColor;
+
+    void main() {              
+      gl_FragColor = vec4( vColor, 1.0 );
+    }
+  </script>
+
+</head>
+
+<body oncontextmenu="return false;">
+  <script type="text/javascript">
+    if (!window.chrome){
+      let warningdiv = document.createElement("div");
+      warningdiv.className = "warningDiv";
+
+      let container = document.createElement("div");
+      container.className = "container";
+
+      let txt = document.createElement("h2");
+      txt.textContent = "To use this synthesizer to it's full potential,"
+
+      let txt2 = document.createElement("h2");
+      txt2.textContent = "please open it with the Chrome webbrowser."
+
+      let btn = document.createElement("button");
+      btn.innerHTML = "Continue"
+      btn.onclick = function(){
+        document.body.removeChild(warning);
+        warning = undefined;
+      }
+
+      container.appendChild(txt);
+      container.appendChild(txt2);
+      container.appendChild(btn);
+      warningdiv.appendChild(container);
+      document.body.appendChild(warningdiv);  
+    }
+  </script>
+</body>
+</html>
