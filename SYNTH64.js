@@ -113,7 +113,7 @@ function setup() {
 	initLayout();
 	
 	iframe[0] = createElement('iframe').hide();
-	iframe[0].attribute('src', 'res/bpm_table.html');
+	iframe[0].attribute('src', './res/bpm_table.html');
 	iframe[0].style('position', 'absolute');
 	iframe[0].style('background-color', "rgb(180,180,180)");
 	iframe[0].position(0,insideTop);
@@ -127,7 +127,7 @@ function setup() {
 	iframe[1].size(width/2, windowHeight - insideTop);
 
 	quickGuideFrame = createElement('iframe').hide();
-	quickGuideFrame.attribute('src', 'res/quickGuide/quickGuide.html');
+	quickGuideFrame.attribute('src', './res/quickGuide/quickGuide.html');
 	quickGuideFrame.style('position', 'absolute');
 	quickGuideFrame.position(width/2, insideTop);
 	quickGuideFrame.size(width/2, windowHeight - insideTop);
@@ -3318,9 +3318,9 @@ function PianoForm(){
 					return;
 				}
 
-				// patterns[currentPattern][selectedSound][x].forEach((note, index)=>{
-				// 	if (note == y + 24) patterns[currentPattern][selectedSound][x].splice(index, 1);
-				// });
+				patterns[currentPattern][selectedSound][x].forEach((note, index)=>{
+					if (note == y + 24) patterns[currentPattern][selectedSound][x].splice(index, 1);
+				});
 
 			}else if (mouseButton == LEFT){
 
@@ -3354,11 +3354,9 @@ function PianoForm(){
 
 					let found = false;
 				 	patterns[currentPattern][selectedSound][x].forEach((note, index)=>{
-				 		if (note == 24 + y){
-				 			patterns[currentPattern][selectedSound][x].splice(index, 1);
-				 			found = true;
-				 		}
+				 		if (note == 24 + y) found = true;
 				 	});
+				 	
 				 	if (!found && patterns[currentPattern][selectedSound][x].length < 3){
 				 		patterns[currentPattern][selectedSound][x].push(24 + y);
 				 		patterns[currentPattern][selectedSound][x].sort((a,b)=>a>b);
