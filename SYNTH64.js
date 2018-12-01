@@ -49,7 +49,6 @@ var maxSounds = 16;
 var maxBeats = 64;
 var beatCounter = 0;
 var currentPattern = 0;
-var currentSound = undefined;
 var selectedSound = 0;
 var playing = false;
 
@@ -80,26 +79,29 @@ let warning;
 
 function setup() {
 	
+	//p5 settings
 	cnv = createCanvas( windowWidth, windowHeight );
 	cnv.drop( DropFile );
 	cnv.mouseWheel( mouseScroll );
 
 	pixelDensity(1);
 	textAlign(CENTER);
+	masterVolume(0.5);
 
+
+	//sound objects
 	for (var i = 0; i < maxSounds; i++){
 		sounds.push( new SoundObject(i, "Sound " + (i + 1)) );
 	}
+	sounds[0].start();
+	sounds[0].waveChange();
 
-	//remove compressor node
-	// soundOut.input.disconnect();
-	// soundOut.input.connect(soundOut.output);
-
-	masterVolume(0.5);
-
+	
+	//create pattern images
 	preload_patternImage();
 	addPattern();
 
+	//create UIforms
 	menuBar = new MenuBar();
 	patternForm = new PatternForm();
 	sequencerForm = new SequencerForm();
@@ -109,9 +111,9 @@ function setup() {
 	euclidianForm = new EuclidianForm();
 	menuBar.init();
 	
-
 	initLayout();
-	
+
+	//setup bmp/freq && quickguide info frames
 	iframe[0] = createElement('iframe').hide();
 	iframe[0].attribute('src', './res/bpm_table.html');
 	iframe[0].style('position', 'absolute');
@@ -120,7 +122,7 @@ function setup() {
 	iframe[0].size(width/2, windowHeight - insideTop);
 	
 	iframe[1] = createElement('iframe').hide();
-	iframe[1].attribute('src', 'res/notefreqs.html');
+	iframe[1].attribute('src', './res/notefreqs.html');
 	iframe[1].style('position', 'absolute');
 	iframe[1].style('background-color', "rgb(180,180,180)");
 	iframe[1].position(width/2, insideTop);
@@ -134,7 +136,7 @@ function setup() {
 
 
 
-
+	//setup midi input
 	WebMidi.enable(function (err) {
 	  	if (err){
 	    	console.log("WebMidi could not be enabled.", err);
@@ -155,28 +157,27 @@ function setup() {
 			}
  		}
  	});
-
 	
-	sounds[0].start();
-	sounds[0].waveChange();
-		
+	//setup pulse worker (webworker helps getting a steady pulse, timeout or interval is not consistent)
 	pulseWorker = new Worker("./lib/pulsegeneratorWorker.js");
 	pulseWorker.addEventListener('message', function(event){
 		Step();
 	});
-
 	pulseWorker.postMessage({'msg' : 120});
 
+	//setup 3d visualizer
 	Visualizer3D = new AudioVisualizer3D(0, insideTop, windowWidth, windowHeight);
 
 
-	console.log("Basis64 - SYNTH64 - v5.8");
-
+	//init view
 	background(40);
 	sequencerForm.display();
 	patternForm.display();
 
+	//'warning' for non-chrome browsers
 	warning = document.querySelector(".warningDiv");
+
+	console.log("Basis64 - SYNTH64 - v5.9");
 }
 
 
@@ -217,7 +218,7 @@ function setup() {
 function draw() {
 	
 	
-
+	//performance mode/ 3dvis mode
 	if (menuBar.performanceModeButton.active == true){
 		background(40);
 		menuBar.display();
@@ -228,8 +229,9 @@ function draw() {
 	 	return;
 	}
 
+	//display Forms
 	menuBar.display();
-	
+
 	if ( patternForm.inFront ){
 		if (pianoForm.inFront ){
 			pianoForm.display();
@@ -239,7 +241,7 @@ function draw() {
 		}else {
 			if (patternForm.render){
 				patternForm.display();
-			} else if (currentSound == undefined) {
+			} else if (soundForm.inFront == false) {
 				patternForm.displayBeatCounter();
 			}
 		}
@@ -249,10 +251,10 @@ function draw() {
 		sequencerForm.display();
 	}
 
-	if (currentSound != undefined){
+	if (soundForm.inFront == true){
 		if (soundForm.render){
 			soundForm.display();
-		}else if (sounds[currentSound].arp.length > 0 && playing){
+		}else if (sounds[selectedSound].arp.length > 0 && playing){
 			soundForm.displayArpCounter()
 		}
 	}
@@ -277,7 +279,8 @@ function Step(){
 		beatCounter++
 		if (beatCounter == maxBeats){
 			beatCounter = 0;
-			if (menuBar.playMode.value == 1){
+
+			if (menuBar.playMode.value == 1){ //playing in songmode, next sequence
 
 				sequencerForm.currentSeq++;
 				if (sequencerForm.currentSeq > sequencerForm.maxSeq){
@@ -379,7 +382,7 @@ function mousePressed(){
 
 	if (arpMenu.pos != undefined){ 
 		arpMenu.catch();
-	}else if (currentSound == undefined){
+	}else if (soundForm.inFront == false){
 		if (soundMenu.pos != undefined){
 			soundMenu.catch();
 		}else if (pattImageMenu.pos != undefined){
@@ -403,7 +406,7 @@ function mouseReleased(){
 	if (waveForm.inFront) waveForm.release();
 	if (euclidianForm.inFront) euclidianForm.release();
 
-	if (currentSound == undefined){
+	if (soundForm.inFront == false){
 		patternForm.release();
 		sequencerForm.release();	
 		menuBar.release();
@@ -428,15 +431,16 @@ function mouseDragged(){
 	}
 
 	
+	//early way of making knob rotation less sensitive... should change (its a delay)
 	dragCount++
-	if (dragCount > 3 || keyIsDown(16) || keyboardPolyNotes.length > 0 ){
+	if (dragCount > 3 || keyIsDown(16) || keyboardPolyNotes.length > 0 ){ 
 		
 		if (euclidianForm.inFront){
 			euclidianForm.drag(round(pmouseY - mouseY));
 			return;
 		}
 
-		if (currentSound == undefined){
+		if (soundForm.inFront == false){
 			patternForm.drag(round(pmouseY - mouseY));
 			
 		}
@@ -445,7 +449,7 @@ function mouseDragged(){
 
 		if (sequencerForm.inFront == true) sequencerForm.drag(round(pmouseY - mouseY));
 
-		if(currentSound != undefined){
+		if(soundForm.inFront == true){
 			soundForm.drag(round(pmouseY - mouseY));
 		}
 		if (pianoForm.inFront == true) pianoForm.drag();
@@ -475,6 +479,7 @@ function keyPressed(){
 
 	getAudioContext().resume();
 
+	//inputboxes
 	if (document.activeElement == patternForm.patternName.elt || document.activeElement == soundForm.nameText.elt){
 		if (keyCode == 13){
 			if (document.activeElement == patternForm.patternName.elt) patternForm.changeName();
@@ -495,6 +500,7 @@ function keyPressed(){
 
 	}else{
 
+		//check for playable keyboard key
 		var i;
 		keyCodes.forEach((code, index)=>{
 			if (code == keyCode){
@@ -505,9 +511,11 @@ function keyPressed(){
 		
 		if (i != undefined){
 
+			//convert to MIDI note
 			var note = 12 + i + menuBar.keyboardOctave.value * 12;
 
-			if (sounds[selectedSound].arpButton.active && currentSound != undefined){
+			//put in ARP sequence
+			if (sounds[selectedSound].arpButton.active && soundForm.inFront == true){
 				
 				if (sounds[selectedSound].arp.length == 0 || sounds[selectedSound].arpKnob.value == sounds[selectedSound].arp.length -1){
 					sounds[selectedSound].arp.push(note);
@@ -520,7 +528,7 @@ function keyPressed(){
 				soundForm.render = true;
 			}
 			
-			
+			//put in polyphone array, to be played, or added to pattern if pianoform is in front.
 			if (keyboardPolyNotes.length < 3){
 
 				keyboardPolyNotes.push(note);
@@ -532,7 +540,7 @@ function keyPressed(){
 					keyboardPolyNotes.forEach((n)=>{
 						patterns[currentPattern][selectedSound][beatCounter].push(n);
 					});
-					editPatternImage(currentPattern, currentSound);
+					editPatternImage(currentPattern, selectedSound);
 				}
 			}			
 		}
@@ -553,6 +561,7 @@ function keyReleased(){
 
 	 	var note = 12 + i + menuBar.keyboardOctave.value * 12;
 
+	 	//remove from polyphone array
 	 	keyboardPolyNotes.forEach((pnote, index)=>{
 			if (pnote == note){
 				keyboardPolyNotes.splice(index, 1);
@@ -579,6 +588,7 @@ function keyReleased(){
 
 
 function playstop(){
+
 	if (!playing){
 		pulseWorker.postMessage({'msg' : "reset"});
 		pulseWorker.postMessage({'msg' : "start"});
@@ -607,7 +617,7 @@ function playstop(){
 		}
 
 		if (!playing){
-			sounds[i].playSilentNote(60);
+			sounds[i].playSilentNote(60);  //to really stop all osc's without having to restart them..
 		}
 	}
 }
@@ -615,10 +625,10 @@ function playstop(){
 
 function DropFile(file){
 
-	if (file.type == "audio" && currentSound != undefined && sounds[currentSound].soundType.value == 2){ // if dropped a mp3 file and the sample window is open.
-		sounds[currentSound].sample = loadSound(file.data, SampleLoaded);
+	if (file.type == "audio" && soundForm.inFront == true && sounds[selectedSound].soundType.value == 2){ // if dropped a mp3 file and the sample window is open.
+		sounds[selectedSound].sample = loadSound(file.data, SampleLoaded);
 
-	}else if (file.name.search("json") >= 0){
+	}else if (file.name.search("json") >= 0){ //dropped a project file
 			loadJSON(file.data, LoadProject);
 			projectName = file.name.split(".");	
 			projectName = projectName[0];
@@ -649,7 +659,7 @@ function initLayout(){
 }
 
 function addPattern(i, duplicate){
-	if (i){ //passing index of new array to insert in middle
+	if (i){ //passing index of new array to insert
 		patterns.splice(i, 0, []);
 		patternImages.splice(i, 0, []);
 		if (duplicate) {
@@ -668,7 +678,7 @@ function addPattern(i, duplicate){
 
 	for (var x = 0; x < maxSounds; x++){
 
-		//actual pattern arrays
+		//step arrays, inside pattern, where notes go into
 		patterns[i].push( [] );
 		for (var j = 0; j < maxBeats; j++){
 			patterns[i][x][j] = [];      
@@ -841,6 +851,8 @@ function generateEuclidianPattern(pulses, steps, rotation) {
 
 
 
+//these functions are horrible, i really should've done this differently.
+//Like, add all the parameters to some array and have it save that or something...
 
 function SaveProject(ret){
 	var saveSounds = {};
@@ -1409,7 +1421,7 @@ try{
 	
 	soundForm.layOut();
 
-	currentSound = undefined;
+	soundForm.inFront = false;
 	selectedSound = 0;
 	currentPattern = 0;
 	if (menuBar.playMode.value == 1){
@@ -1760,12 +1772,13 @@ function MenuBar(){
 
 	this.display = function(){
 		push();
+			//background
 			fill(120);
 			stroke( 40 );
 			strokeWeight( 2 );
 			rect(this.pos.x, this.pos.y, this.pos.w, this.pos.h);
 					
-
+			//play/stop buttons
 			fill(188, 90, 18)
 			stroke(208, 110, 38)
 			if (playing == true){
@@ -1791,13 +1804,14 @@ function MenuBar(){
 			endShape(CLOSE);
 			rect(this.stop.x - this.stop.w / 4, this.stop.y - this.stop.h / 4, this.stop.w / 2, this.stop.h / 2);
 
+			//background for knobs and midi select
 			fill(titleBarColor + 10);
 			stroke(188, 90, 18);
 			strokeWeight(2.1);
 			rect(this.mainOutputVolume.pos.x - this.mainOutputVolume.size * 1, 5, this.swingKnob.pos.x + this.swingKnob.size - (this.mainOutputVolume.pos.x - this.mainOutputVolume.size * 1.2), insideTop - 10, 5);
-			
 			rect(this.keyboardOctave.pos.x - this.keyboardOctave.size * 1.5, 5, this.midiselect.position().x + this.midiselect.width + 10 - (this.keyboardOctave.pos.x - (this.keyboardOctave.size * 1.5)), insideTop - 10, 5);
 
+			//the text of the pressed keys
 			textSize((insideTop - 10) / 3);
 			textStyle(BOLD);
 			stroke(188, 90, 18);
@@ -1810,6 +1824,7 @@ function MenuBar(){
 			str = str.substr(0, str.length - 3);
 			text( str, this.midiselect.x + this.midiselect.width* 0.4, insideTop * 0.45);
 
+			//logo, width shade
 			stroke(80);
 			fill(90);
 			textSize( insideTop - 30);
@@ -1822,6 +1837,7 @@ function MenuBar(){
 			textAlign(RIGHT);
 			text("SYNTH64", width - 10, insideTop - 25);
 			
+			//framerate
 			noStroke();
 			textAlign(LEFT);
 			fill(0);
@@ -1847,6 +1863,9 @@ function MenuBar(){
 	}
 
 	this.init = function(){
+
+		//create elements
+
 		this.keyboardOctave = new KnobObject( 0,0,0, "Typing Keyboard\nOctave", function(){});
 		this.keyboardOctave.set(1,6,3,1);
 
@@ -1920,7 +1939,7 @@ function MenuBar(){
 			if (s > -1){
 				WebMidi.inputs[s].addListener('noteon', "all",function(e){
 
-					if (sounds[selectedSound].arpButton.active && currentSound != undefined){	
+					if (sounds[selectedSound].arpButton.active && soundForm.inFront == true){	
 						if (sounds[selectedSound].arp.length == 0 || sounds[selectedSound].arpKnob.value == sounds[selectedSound].arp.length -1){
 							sounds[selectedSound].arp.push(e.note.number);
 							let max = sounds[selectedSound].arp.length - 1;
@@ -1941,7 +1960,7 @@ function MenuBar(){
 							keyboardPolyNotes.forEach((n)=>{
 								patterns[currentPattern][selectedSound][beatCounter].push(n);
 							});
-							editPatternImage(currentPattern, currentSound);
+							editPatternImage(currentPattern, selectedSound);
 						}
 
 						sounds[selectedSound].playPolyNotes(keyboardPolyNotes);
@@ -1963,6 +1982,9 @@ function MenuBar(){
 	}
 
 	this.layOut = function(){
+
+		//set coords for all elements
+
 		this.pos = {x: 0, y: 0, w: width, h: insideTop}
 		
 		this.menuButton.height = insideTop * 0.6
@@ -2046,7 +2068,7 @@ function MenuBar(){
 
 		if(this.performanceModeButton.active){ 
 			this.performanceModeButton.active = false;
-			currentSound = undefined;
+			soundForm.inFront = false;
 			sequencerForm.display();
 			patternForm.display();
 			if (patternForm.inFront) {
@@ -2073,6 +2095,7 @@ function MenuBar(){
 			this.cheatbutton.catch();
 		}
 
+		//click on play/pause
 		if ( dist(mouseX, mouseY, this.play.x, this.play.y) < this.play.w / 2 && playing == false){
 			playstop();
 
@@ -2368,6 +2391,7 @@ function PatternForm(){
 	this.catch = function(){
 		if (this.inFront){
 
+			//check if exiting the name inputbox
 			let pw = this.addbutton.width + this.patternbox.width + 2;
 			let ph = this.patternbox.height - 1;
 			if (document.activeElement == this.patternName.elt &&
@@ -2377,7 +2401,7 @@ function PatternForm(){
 				return;
 			}
 
-
+			//clicking the slider
 			if (mouseX > this.vertical.x && mouseX < this.vertical.x + this.vertical.w &&
 				mouseY > this.vertical.y && mouseY < this.vertical.y + this.vertical.h){
 				this.thumb.y = constrain(mouseY, this.vertical.y, this.vertical.y + this.vertical.h - this.thumb.h);
@@ -2445,6 +2469,7 @@ function PatternForm(){
 			}
 			
 		}else{
+			//check if clicked outside form, inside sequencerform, switch
 			if ((mouseX > this.pos.x && mouseX < sequencerForm.pos.x &&
 				mouseY > this.pos.y && mouseY < this.pos.y + this.pos.h) ||
 				(mouseX > this.pos.x && mouseX < this.pos.x + this.pos.w &&
@@ -2458,6 +2483,9 @@ function PatternForm(){
 	}
 
 	this.displayBeatCounter = function(){
+
+		//draw only the beatcounter, saves time
+
 		push();
 			fill(formBackGroundColor);
 			noStroke();
@@ -2511,7 +2539,7 @@ function PatternForm(){
 			this.patternbox.selected(currentPattern);
 			this.render = true;
 
-		}else if (this.inFront == true && pianoForm.inFront == false && currentSound == undefined && mouseX > this.pos.x && mouseX < this.pos.x + this.pos.w &&
+		}else if (this.inFront == true && pianoForm.inFront == false && soundForm.inFront == false && mouseX > this.pos.x && mouseX < this.pos.x + this.pos.w &&
 			mouseY > this.pos.y && mouseY < this.pos.y + this.pos.h &&
 			this.list + round(amount) <= this.maxList && this.list + round(amount) >= 0) {
 			
@@ -3600,7 +3628,7 @@ class WaveformForm{
 	}
 	
 	updateWave(arr, osc){
-		let nArr = this.quadrupleArray(arr);
+		let nArr = this.quadrupleArray(arr); //not working yet.. 
 
 		let ac = getAudioContext();
 		var ft = new DFT(arr.length, 44100);
@@ -3946,7 +3974,7 @@ function SoundForm(){
 	this.nameText = createInput();
 	this.nameText.hide()
 	this.nameText.input(function(){
-		sounds[currentSound].label = soundForm.nameText.value(); 
+		sounds[selectedSound].label = soundForm.nameText.value(); 
 		patternForm.render = true;
 		soundForm.render = true;
 	});
@@ -3997,7 +4025,7 @@ function SoundForm(){
 	this.presets.option("Ponk2");
 	//function
 	this.presets.changed( function(){
-		sounds[currentSound].label = soundForm.presets.value();
+		sounds[selectedSound].label = soundForm.presets.value();
 		loadPreset();
 
 		soundForm.presets.elt.blur();
@@ -4034,239 +4062,239 @@ function SoundForm(){
 		this.envelopeSelect.selected("Sound");
 
 
-		if (sounds[currentSound] != undefined){
+		if (sounds[selectedSound] != undefined){
 
 			this.presets.selected("-- Preset --");
 
-			sounds[currentSound].soundType.pos = createVector( this.pos.x + 10, this.pos.y + 10);
-			sounds[currentSound].soundType.width = this.pos.w - 20;
-			sounds[currentSound].soundType.height = this.pos.h / 30;
+			sounds[selectedSound].soundType.pos = createVector( this.pos.x + 10, this.pos.y + 10);
+			sounds[selectedSound].soundType.width = this.pos.w - 20;
+			sounds[selectedSound].soundType.height = this.pos.h / 30;
 
 			
 			//arpKnob
-			sounds[currentSound].arpKnob.size = knobSize;
+			sounds[selectedSound].arpKnob.size = knobSize;
 
 
 			// //filter interface
-			sounds[currentSound].filterFreq.pos = createVector( this.dev + this.rightwidth / 4 , this.formtop + this.threeheight * 0.35);
-			sounds[currentSound].filterFreq.size = knobSize;
-			sounds[currentSound].filterRes.pos = createVector( this.dev + (this.rightwidth / 4 * 2), this.formtop + this.threeheight * 0.35);
-			sounds[currentSound].filterRes.size = knobSize;
-			sounds[currentSound].filterGain.pos = createVector( this.dev + (this.rightwidth / 4 * 3), this.formtop + this.threeheight * 0.35);
-			sounds[currentSound].filterGain.size = knobSize;
-			sounds[currentSound].filterType.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[currentSound].filterType.width / 2 , this.formtop + this.threeheight * 0.8);
-			sounds[currentSound].filterLink.pos = createVector( this.dev + this.rightwidth / 4 - sounds[currentSound].filterLink.width/2 , this.formtop + this.threeheight * 0.6);
+			sounds[selectedSound].filterFreq.pos = createVector( this.dev + this.rightwidth / 4 , this.formtop + this.threeheight * 0.35);
+			sounds[selectedSound].filterFreq.size = knobSize;
+			sounds[selectedSound].filterRes.pos = createVector( this.dev + (this.rightwidth / 4 * 2), this.formtop + this.threeheight * 0.35);
+			sounds[selectedSound].filterRes.size = knobSize;
+			sounds[selectedSound].filterGain.pos = createVector( this.dev + (this.rightwidth / 4 * 3), this.formtop + this.threeheight * 0.35);
+			sounds[selectedSound].filterGain.size = knobSize;
+			sounds[selectedSound].filterType.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[selectedSound].filterType.width / 2 , this.formtop + this.threeheight * 0.8);
+			sounds[selectedSound].filterLink.pos = createVector( this.dev + this.rightwidth / 4 - sounds[selectedSound].filterLink.width/2 , this.formtop + this.threeheight * 0.6);
 
 			//LFO1 interface
-			sounds[currentSound].LFO1Freq.pos = createVector( this.dev + this.rightwidth / 4 , this.formtop + 5 + this.threeheight * 1.3);
-			sounds[currentSound].LFO1Freq.size = knobSize;
-			sounds[currentSound].LFO1Amount.pos = createVector(this.dev + (this.rightwidth / 4 * 3), this.formtop + 5 +  this.threeheight * 1.3);
-			sounds[currentSound].LFO1Amount.size = knobSize;
-			sounds[currentSound].LFO1Wave.width = this.rightwidth - 40;
-			sounds[currentSound].LFO1Wave.height = this.threeheight / 12;
-			sounds[currentSound].LFO1Wave.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[currentSound].LFO1Wave.width / 2 , this.formtop + this.threeheight * 1.54);
+			sounds[selectedSound].LFO1Freq.pos = createVector( this.dev + this.rightwidth / 4 , this.formtop + 5 + this.threeheight * 1.3);
+			sounds[selectedSound].LFO1Freq.size = knobSize;
+			sounds[selectedSound].LFO1Amount.pos = createVector(this.dev + (this.rightwidth / 4 * 3), this.formtop + 5 +  this.threeheight * 1.3);
+			sounds[selectedSound].LFO1Amount.size = knobSize;
+			sounds[selectedSound].LFO1Wave.width = this.rightwidth - 40;
+			sounds[selectedSound].LFO1Wave.height = this.threeheight / 12;
+			sounds[selectedSound].LFO1Wave.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[selectedSound].LFO1Wave.width / 2 , this.formtop + this.threeheight * 1.54);
 
-			sounds[currentSound].LFO1Binder.width = this.rightwidth * 0.8;
-			sounds[currentSound].LFO1Binder.height = this.threeheight * 0.3;
-			sounds[currentSound].LFO1Binder.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[currentSound].LFO1Binder.width / 2 , this.formtop + this.threeheight * 1.68);
-			sounds[currentSound].LFO1Link.pos = createVector( this.dev + this.rightwidth / 2 - sounds[currentSound].LFO1Link.width/2 , this.formtop + 5 + this.threeheight * 1.3);
+			sounds[selectedSound].LFO1Binder.width = this.rightwidth * 0.8;
+			sounds[selectedSound].LFO1Binder.height = this.threeheight * 0.3;
+			sounds[selectedSound].LFO1Binder.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[selectedSound].LFO1Binder.width / 2 , this.formtop + this.threeheight * 1.68);
+			sounds[selectedSound].LFO1Link.pos = createVector( this.dev + this.rightwidth / 2 - sounds[selectedSound].LFO1Link.width/2 , this.formtop + 5 + this.threeheight * 1.3);
 
 			//LFO2 interface
-			sounds[currentSound].LFO2Freq.pos = createVector( this.dev + this.rightwidth / 4 , this.formtop + 5 + this.threeheight * 2.3);
-			sounds[currentSound].LFO2Freq.size = knobSize;
-			sounds[currentSound].LFO2Amount.pos = createVector(this.dev + (this.rightwidth / 4 * 3), this.formtop + 5 +  this.threeheight * 2.3);
-			sounds[currentSound].LFO2Amount.size = knobSize;
-			sounds[currentSound].LFO2Wave.width = this.rightwidth - 40;
-			sounds[currentSound].LFO2Wave.height = this.threeheight / 12;
-			sounds[currentSound].LFO2Wave.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[currentSound].LFO2Wave.width / 2 , this.formtop + this.threeheight * 2.54);
+			sounds[selectedSound].LFO2Freq.pos = createVector( this.dev + this.rightwidth / 4 , this.formtop + 5 + this.threeheight * 2.3);
+			sounds[selectedSound].LFO2Freq.size = knobSize;
+			sounds[selectedSound].LFO2Amount.pos = createVector(this.dev + (this.rightwidth / 4 * 3), this.formtop + 5 +  this.threeheight * 2.3);
+			sounds[selectedSound].LFO2Amount.size = knobSize;
+			sounds[selectedSound].LFO2Wave.width = this.rightwidth - 40;
+			sounds[selectedSound].LFO2Wave.height = this.threeheight / 12;
+			sounds[selectedSound].LFO2Wave.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[selectedSound].LFO2Wave.width / 2 , this.formtop + this.threeheight * 2.54);
 			
-			sounds[currentSound].LFO2Binder.width = this.rightwidth * 0.8;
-			sounds[currentSound].LFO2Binder.height = this.threeheight * 0.3;
-			sounds[currentSound].LFO2Binder.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[currentSound].LFO2Binder.width / 2 , this.formtop + this.threeheight * 2.7);
-			sounds[currentSound].LFO2Link.pos = createVector( this.dev + this.rightwidth / 2 - sounds[currentSound].LFO2Link.width/2 , this.formtop + 5 + this.threeheight * 2.3);
+			sounds[selectedSound].LFO2Binder.width = this.rightwidth * 0.8;
+			sounds[selectedSound].LFO2Binder.height = this.threeheight * 0.3;
+			sounds[selectedSound].LFO2Binder.pos = createVector(this.dev + (this.rightwidth * 0.5) - sounds[selectedSound].LFO2Binder.width / 2 , this.formtop + this.threeheight * 2.7);
+			sounds[selectedSound].LFO2Link.pos = createVector( this.dev + this.rightwidth / 2 - sounds[selectedSound].LFO2Link.width/2 , this.formtop + 5 + this.threeheight * 2.3);
 
 			// //sound select / ADSR interface
-			sounds[currentSound].attackTime.pos = createVector(this.pos.x + this.leftwidth * 0.25, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].attackTime.size = knobSize;
+			sounds[selectedSound].attackTime.pos = createVector(this.pos.x + this.leftwidth * 0.25, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].attackTime.size = knobSize;
 			
-			sounds[currentSound].decayTime.pos = createVector(this.pos.x + this.leftwidth * 0.35, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].decayTime.size = knobSize;
+			sounds[selectedSound].decayTime.pos = createVector(this.pos.x + this.leftwidth * 0.35, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].decayTime.size = knobSize;
 
-			sounds[currentSound].susPercent.pos = createVector(this.pos.x + this.leftwidth * 0.45, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].susPercent.size = knobSize;
+			sounds[selectedSound].susPercent.pos = createVector(this.pos.x + this.leftwidth * 0.45, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].susPercent.size = knobSize;
 
-			sounds[currentSound].releaseTime.pos = createVector(this.pos.x + this.leftwidth  * 0.55, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].releaseTime.size = knobSize;
+			sounds[selectedSound].releaseTime.pos = createVector(this.pos.x + this.leftwidth  * 0.55, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].releaseTime.size = knobSize;
 
-			sounds[currentSound].attackLevel.pos = createVector(this.pos.x + this.leftwidth * 0.7, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].attackLevel.size = knobSize;
+			sounds[selectedSound].attackLevel.pos = createVector(this.pos.x + this.leftwidth * 0.7, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].attackLevel.size = knobSize;
 
-			sounds[currentSound].releaseLevel.pos = createVector(this.pos.x + this.leftwidth * 0.8, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].releaseLevel.size = knobSize;
+			sounds[selectedSound].releaseLevel.pos = createVector(this.pos.x + this.leftwidth * 0.8, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].releaseLevel.size = knobSize;
 			
-			sounds[currentSound].ADSRMultiplier.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.5 , this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].ADSRMultiplier.size = knobSize;
+			sounds[selectedSound].ADSRMultiplier.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.5 , this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].ADSRMultiplier.size = knobSize;
 
-			sounds[currentSound].ADSRExpo.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.6 - (knobSize/2) , this.formtop + this.threeheight * 2.5);
-			sounds[currentSound].ADSRExpo.width = knobSize * 1.2;
-			sounds[currentSound].ADSRExpo.height = knobSize * 1.2;
+			sounds[selectedSound].ADSRExpo.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.6 - (knobSize/2) , this.formtop + this.threeheight * 2.5);
+			sounds[selectedSound].ADSRExpo.width = knobSize * 1.2;
+			sounds[selectedSound].ADSRExpo.height = knobSize * 1.2;
 			
-			sounds[currentSound].ADSRChance.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.5 , this.formtop + this.threeheight * 2.85);
-			sounds[currentSound].ADSRChance.size = knobSize;
+			sounds[selectedSound].ADSRChance.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.5 , this.formtop + this.threeheight * 2.85);
+			sounds[selectedSound].ADSRChance.size = knobSize;
 
 			//adsr for filter!
 
-			sounds[currentSound].filterattackTime.pos = createVector(this.pos.x + this.leftwidth * 0.25, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].filterattackTime.size = knobSize;
+			sounds[selectedSound].filterattackTime.pos = createVector(this.pos.x + this.leftwidth * 0.25, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].filterattackTime.size = knobSize;
 			
-			sounds[currentSound].filterdecayTime.pos = createVector(this.pos.x + this.leftwidth * 0.35, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].filterdecayTime.size = knobSize;
+			sounds[selectedSound].filterdecayTime.pos = createVector(this.pos.x + this.leftwidth * 0.35, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].filterdecayTime.size = knobSize;
 
-			sounds[currentSound].filtersusPercent.pos = createVector(this.pos.x + this.leftwidth * 0.45, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].filtersusPercent.size = knobSize;
+			sounds[selectedSound].filtersusPercent.pos = createVector(this.pos.x + this.leftwidth * 0.45, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].filtersusPercent.size = knobSize;
 
-			sounds[currentSound].filterreleaseTime.pos = createVector(this.pos.x + this.leftwidth  * 0.55, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].filterreleaseTime.size = knobSize;
+			sounds[selectedSound].filterreleaseTime.pos = createVector(this.pos.x + this.leftwidth  * 0.55, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].filterreleaseTime.size = knobSize;
 
-			sounds[currentSound].filterattackLevel.pos = createVector(this.pos.x + this.leftwidth * 0.7, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].filterattackLevel.size = knobSize;
+			sounds[selectedSound].filterattackLevel.pos = createVector(this.pos.x + this.leftwidth * 0.7, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].filterattackLevel.size = knobSize;
 
-			sounds[currentSound].filterreleaseLevel.pos = createVector(this.pos.x + this.leftwidth * 0.8, this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].filterreleaseLevel.size = knobSize;
+			sounds[selectedSound].filterreleaseLevel.pos = createVector(this.pos.x + this.leftwidth * 0.8, this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].filterreleaseLevel.size = knobSize;
 			
-			sounds[currentSound].filterADSRMultiplier.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.5 , this.formtop + this.threeheight * 2.2);
-			sounds[currentSound].filterADSRMultiplier.size = knobSize;
+			sounds[selectedSound].filterADSRMultiplier.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.5 , this.formtop + this.threeheight * 2.2);
+			sounds[selectedSound].filterADSRMultiplier.size = knobSize;
 
-			sounds[currentSound].filterADSRExpo.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.6 - (knobSize/2) , this.formtop + this.threeheight * 2.5);
-			sounds[currentSound].filterADSRExpo.width = knobSize * 1.2;
-			sounds[currentSound].filterADSRExpo.height = knobSize * 1.2;
-
-
+			sounds[selectedSound].filterADSRExpo.pos = createVector(this.pos.x + this.leftwidth - knobSize * 1.6 - (knobSize/2) , this.formtop + this.threeheight * 2.5);
+			sounds[selectedSound].filterADSRExpo.width = knobSize * 1.2;
+			sounds[selectedSound].filterADSRExpo.height = knobSize * 1.2;
 
 
-			 switch(sounds[currentSound].soundType.value){
+
+
+			 switch(sounds[selectedSound].soundType.value){
 			 	case 0:
 			// 		//OSC Interface
-					sounds[currentSound].osc1Detune.pos = createVector(this.pos.x + this.leftwidth * 0.26, this.formtop + this.threeheight * 0.2);
-					sounds[currentSound].osc1Detune.size = knobSize;
-					sounds[currentSound].osc1Wave.width = (this.leftwidth - 20) / 2.6;
-					sounds[currentSound].osc1Wave.height = this.threeheight / 12;
-					sounds[currentSound].osc1Wave.pos = createVector(this.pos.x + this.leftwidth * 0.22 - sounds[currentSound].osc1Wave.width / 2 , this.formtop + this.threeheight * 0.43);
+					sounds[selectedSound].osc1Detune.pos = createVector(this.pos.x + this.leftwidth * 0.26, this.formtop + this.threeheight * 0.2);
+					sounds[selectedSound].osc1Detune.size = knobSize;
+					sounds[selectedSound].osc1Wave.width = (this.leftwidth - 20) / 2.6;
+					sounds[selectedSound].osc1Wave.height = this.threeheight / 12;
+					sounds[selectedSound].osc1Wave.pos = createVector(this.pos.x + this.leftwidth * 0.22 - sounds[selectedSound].osc1Wave.width / 2 , this.formtop + this.threeheight * 0.43);
 
-					sounds[currentSound].osc2Detune.pos = createVector(this.pos.x + this.leftwidth * 0.75, this.formtop + this.threeheight * 0.2);
-					sounds[currentSound].osc2Detune.size = knobSize;
-					sounds[currentSound].osc2Octave.pos = createVector(this.pos.x + this.leftwidth * 0.83, this.formtop + this.threeheight * 0.2);
-					sounds[currentSound].osc2Octave.size = knobSize;
-					sounds[currentSound].osc2Wave.width = (this.leftwidth - 20) / 2.6;
-					sounds[currentSound].osc2Wave.height = this.threeheight / 12;
-					sounds[currentSound].osc2Wave.pos = createVector(this.pos.x + this.leftwidth * 0.78 - sounds[currentSound].osc1Wave.width / 2 , this.formtop + this.threeheight * 0.43);
+					sounds[selectedSound].osc2Detune.pos = createVector(this.pos.x + this.leftwidth * 0.75, this.formtop + this.threeheight * 0.2);
+					sounds[selectedSound].osc2Detune.size = knobSize;
+					sounds[selectedSound].osc2Octave.pos = createVector(this.pos.x + this.leftwidth * 0.83, this.formtop + this.threeheight * 0.2);
+					sounds[selectedSound].osc2Octave.size = knobSize;
+					sounds[selectedSound].osc2Wave.width = (this.leftwidth - 20) / 2.6;
+					sounds[selectedSound].osc2Wave.height = this.threeheight / 12;
+					sounds[selectedSound].osc2Wave.pos = createVector(this.pos.x + this.leftwidth * 0.78 - sounds[selectedSound].osc1Wave.width / 2 , this.formtop + this.threeheight * 0.43);
 
-			 		sounds[currentSound].osc3Amount.pos = createVector( this.pos.x + this.leftwidth * 0.26, this.formtop + this.threeheight * 0.65 );
-			 		sounds[currentSound].osc3Amount.size = knobSize;
-			 		sounds[currentSound].osc3Detune.pos = createVector( this.pos.x + this.leftwidth * 0.34, this.formtop + this.threeheight * 0.65 );
-			 		sounds[currentSound].osc3Detune.size = knobSize;
-			 		sounds[currentSound].osc3Octave.pos = createVector( this.pos.x + this.leftwidth * 0.42, this.formtop + this.threeheight * 0.65 );
-			 		sounds[currentSound].osc3Octave.size = knobSize;
-					sounds[currentSound].osc3Wave.width = (this.leftwidth - 20) / 2.6;
-					sounds[currentSound].osc3Wave.height = this.threeheight / 12;
-			 		sounds[currentSound].osc3Wave.pos = createVector( this.pos.x + this.leftwidth * 0.22 - sounds[currentSound].osc1Wave.width / 2 , this.formtop + this.threeheight * 0.86 );
+			 		sounds[selectedSound].osc3Amount.pos = createVector( this.pos.x + this.leftwidth * 0.26, this.formtop + this.threeheight * 0.65 );
+			 		sounds[selectedSound].osc3Amount.size = knobSize;
+			 		sounds[selectedSound].osc3Detune.pos = createVector( this.pos.x + this.leftwidth * 0.34, this.formtop + this.threeheight * 0.65 );
+			 		sounds[selectedSound].osc3Detune.size = knobSize;
+			 		sounds[selectedSound].osc3Octave.pos = createVector( this.pos.x + this.leftwidth * 0.42, this.formtop + this.threeheight * 0.65 );
+			 		sounds[selectedSound].osc3Octave.size = knobSize;
+					sounds[selectedSound].osc3Wave.width = (this.leftwidth - 20) / 2.6;
+					sounds[selectedSound].osc3Wave.height = this.threeheight / 12;
+			 		sounds[selectedSound].osc3Wave.pos = createVector( this.pos.x + this.leftwidth * 0.22 - sounds[selectedSound].osc1Wave.width / 2 , this.formtop + this.threeheight * 0.86 );
 
-			 		sounds[currentSound].oscMix.pos = createVector(this.pos.x + this.leftwidth * 0.5, this.formtop + this.threeheight * 0.15);
-			 		sounds[currentSound].oscMix.size = knobSize;
+			 		sounds[selectedSound].oscMix.pos = createVector(this.pos.x + this.leftwidth * 0.5, this.formtop + this.threeheight * 0.15);
+			 		sounds[selectedSound].oscMix.size = knobSize;
 
-			 		sounds[currentSound].RingMod.pos = createVector(this.pos.x + this.leftwidth * 0.5 - knobSize, sounds[currentSound].oscMix.pos.y + knobSize*1.4);
-					sounds[currentSound].RingMod.width = knobSize * 2;
-					sounds[currentSound].RingMod.height = knobSize;
+			 		sounds[selectedSound].RingMod.pos = createVector(this.pos.x + this.leftwidth * 0.5 - knobSize, sounds[selectedSound].oscMix.pos.y + knobSize*1.4);
+					sounds[selectedSound].RingMod.width = knobSize * 2;
+					sounds[selectedSound].RingMod.height = knobSize;
 
-			 		sounds[currentSound].oscRamp.pos = createVector(this.pos.x + this.leftwidth * 0.72, this.formtop + this.threeheight * 0.71); 
-			 		sounds[currentSound].oscRamp.size = knobSize;
+			 		sounds[selectedSound].oscRamp.pos = createVector(this.pos.x + this.leftwidth * 0.72, this.formtop + this.threeheight * 0.71); 
+			 		sounds[selectedSound].oscRamp.size = knobSize;
 
-			 		sounds[currentSound].glideSelector.pos = createVector(this.pos.x + this.leftwidth * 0.72 - sounds[currentSound].glideSelector.width - knobSize * 0.8, this.formtop + this.threeheight * 0.7 - 15); 
+			 		sounds[selectedSound].glideSelector.pos = createVector(this.pos.x + this.leftwidth * 0.72 - sounds[selectedSound].glideSelector.width - knobSize * 0.8, this.formtop + this.threeheight * 0.7 - 15); 
 
-			 		sounds[currentSound].rollingChords.pos = createVector(this.pos.x + this.leftwidth * 0.83, this.formtop + this.threeheight * 0.71); 
-			 		sounds[currentSound].rollingChords.size = knobSize;
+			 		sounds[selectedSound].rollingChords.pos = createVector(this.pos.x + this.leftwidth * 0.83, this.formtop + this.threeheight * 0.71); 
+			 		sounds[selectedSound].rollingChords.size = knobSize;
 
 
 			// 		//	Effect interface
-			 		sounds[currentSound].delayTime.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.2);
-			 		sounds[currentSound].delayTime.size = knobSize;
-			 		sounds[currentSound].delayFeedback.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.55);
-			 		sounds[currentSound].delayFeedback.size = knobSize;
-			 		sounds[currentSound].delayFilterFreq.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.85);
-			 		sounds[currentSound].delayFilterFreq.size = knobSize;
+			 		sounds[selectedSound].delayTime.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.2);
+			 		sounds[selectedSound].delayTime.size = knobSize;
+			 		sounds[selectedSound].delayFeedback.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.55);
+			 		sounds[selectedSound].delayFeedback.size = knobSize;
+			 		sounds[selectedSound].delayFilterFreq.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.85);
+			 		sounds[selectedSound].delayFilterFreq.size = knobSize;
 
-					sounds[currentSound].distortionAmount.pos = createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.2);
-					sounds[currentSound].distortionAmount.size = knobSize;
-					sounds[currentSound].distortionSampling.pos	= createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.55);
-					sounds[currentSound].distortionSampling.size = knobSize;
+					sounds[selectedSound].distortionAmount.pos = createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.2);
+					sounds[selectedSound].distortionAmount.size = knobSize;
+					sounds[selectedSound].distortionSampling.pos	= createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.55);
+					sounds[selectedSound].distortionSampling.size = knobSize;
 
-					sounds[currentSound].arpSelector.height = this.threeheight * 0.6;
-					sounds[currentSound].arpSelector.width = this.leftwidth * 0.45;
-			 		sounds[currentSound].arpSelector.pos = createVector(this.pos.x + this.leftwidth - 10 - sounds[currentSound].arpSelector.width, this.formtop + this.threeheight * 2 - sounds[currentSound].arpSelector.height);
+					sounds[selectedSound].arpSelector.height = this.threeheight * 0.6;
+					sounds[selectedSound].arpSelector.width = this.leftwidth * 0.45;
+			 		sounds[selectedSound].arpSelector.pos = createVector(this.pos.x + this.leftwidth - 10 - sounds[selectedSound].arpSelector.width, this.formtop + this.threeheight * 2 - sounds[selectedSound].arpSelector.height);
 
-			 		sounds[currentSound].arpButton.width = sounds[currentSound].arpSelector.width;
-			 		sounds[currentSound].arpButton.height = this.threeheight * 0.25
-			 		sounds[currentSound].arpButton.pos = createVector(sounds[currentSound].arpSelector.pos.x, this.formtop + this.threeheight * 1.1 );
-			 		sounds[currentSound].arpKnob.pos = createVector(sounds[currentSound].arpSelector.pos.x + knobSize, this.formtop + this.threeheight * 1.2 );
+			 		sounds[selectedSound].arpButton.width = sounds[selectedSound].arpSelector.width;
+			 		sounds[selectedSound].arpButton.height = this.threeheight * 0.25
+			 		sounds[selectedSound].arpButton.pos = createVector(sounds[selectedSound].arpSelector.pos.x, this.formtop + this.threeheight * 1.1 );
+			 		sounds[selectedSound].arpKnob.pos = createVector(sounds[selectedSound].arpSelector.pos.x + knobSize, this.formtop + this.threeheight * 1.2 );
 
 			
 		 			break;
 				case 1:
 					//noise
-					sounds[currentSound].noiseSelector.width = this.leftwidth - 40;
-					sounds[currentSound].noiseSelector.height = this.threeheight * 0.5
-			 		sounds[currentSound].noiseSelector.pos.set( this.pos.x + 20, this.formtop + this.threeheight * 0.3 );
+					sounds[selectedSound].noiseSelector.width = this.leftwidth - 40;
+					sounds[selectedSound].noiseSelector.height = this.threeheight * 0.5
+			 		sounds[selectedSound].noiseSelector.pos.set( this.pos.x + 20, this.formtop + this.threeheight * 0.3 );
 
-					sounds[currentSound].delayTime.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.2);
-			 		sounds[currentSound].delayTime.size = knobSize;
-			 		sounds[currentSound].delayFeedback.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.55);
-			 		sounds[currentSound].delayFeedback.size = knobSize;
-			 		sounds[currentSound].delayFilterFreq.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.85);
-			 		sounds[currentSound].delayFilterFreq.size = knobSize;
+					sounds[selectedSound].delayTime.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.2);
+			 		sounds[selectedSound].delayTime.size = knobSize;
+			 		sounds[selectedSound].delayFeedback.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.55);
+			 		sounds[selectedSound].delayFeedback.size = knobSize;
+			 		sounds[selectedSound].delayFilterFreq.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.85);
+			 		sounds[selectedSound].delayFilterFreq.size = knobSize;
 
-					sounds[currentSound].distortionAmount.pos = createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.2);
-					sounds[currentSound].distortionAmount.size = knobSize;
-					sounds[currentSound].distortionSampling.pos	= createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.55);
-					sounds[currentSound].distortionSampling.size = knobSize;
+					sounds[selectedSound].distortionAmount.pos = createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.2);
+					sounds[selectedSound].distortionAmount.size = knobSize;
+					sounds[selectedSound].distortionSampling.pos	= createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.55);
+					sounds[selectedSound].distortionSampling.size = knobSize;
 
 					break;
 			 	case 2:
 			// 		//sample
-					sounds[currentSound].sampleStart.pos = createVector(this.pos.x + this.leftwidth / 8, this.formtop + this.threeheight * 0.8);
-					sounds[currentSound].sampleStart.size = knobSize;
-					sounds[currentSound].sampleStop.pos  = createVector(this.pos.x + this.leftwidth / 8 * 2, this.formtop + this.threeheight * 0.8);
-					sounds[currentSound].sampleStop.size = knobSize;
-					sounds[currentSound].sampleTune.pos  = createVector(this.pos.x + this.leftwidth / 8 * 3, this.formtop + this.threeheight * 0.8);
-					sounds[currentSound].sampleTune.size = knobSize;
+					sounds[selectedSound].sampleStart.pos = createVector(this.pos.x + this.leftwidth / 8, this.formtop + this.threeheight * 0.8);
+					sounds[selectedSound].sampleStart.size = knobSize;
+					sounds[selectedSound].sampleStop.pos  = createVector(this.pos.x + this.leftwidth / 8 * 2, this.formtop + this.threeheight * 0.8);
+					sounds[selectedSound].sampleStop.size = knobSize;
+					sounds[selectedSound].sampleTune.pos  = createVector(this.pos.x + this.leftwidth / 8 * 3, this.formtop + this.threeheight * 0.8);
+					sounds[selectedSound].sampleTune.size = knobSize;
 
-					sounds[currentSound].sampleLoop.height = this.threeheight * 0.2;
-			 		sounds[currentSound].sampleLoop.pos  = createVector(this.pos.x + this.leftwidth / 8 * 4.8 - sounds[currentSound].sampleLoop.width / 2 , this.formtop + this.threeheight * 0.8 - sounds[currentSound].sampleLoop.height / 2); 
-					sounds[currentSound].sampleReverse.height = this.threeheight * 0.2;
-					sounds[currentSound].sampleReverse.width = this.leftwidth * 0.15
-			 		sounds[currentSound].sampleReverse.pos  = createVector(this.pos.x + this.leftwidth / 8 * 6 - sounds[currentSound].sampleReverse.width / 2 , this.formtop + this.threeheight * 0.8 - sounds[currentSound].sampleReverse.height / 2); 
-			 		sounds[currentSound].samplePlay.height = this.threeheight * 0.2;
-			 		sounds[currentSound].samplePlay.pos  = createVector(this.pos.x + this.leftwidth / 8 * 7.2 - sounds[currentSound].samplePlay.width / 2 , this.formtop + this.threeheight * 0.8 - sounds[currentSound].samplePlay.height / 2); 
+					sounds[selectedSound].sampleLoop.height = this.threeheight * 0.2;
+			 		sounds[selectedSound].sampleLoop.pos  = createVector(this.pos.x + this.leftwidth / 8 * 4.8 - sounds[selectedSound].sampleLoop.width / 2 , this.formtop + this.threeheight * 0.8 - sounds[selectedSound].sampleLoop.height / 2); 
+					sounds[selectedSound].sampleReverse.height = this.threeheight * 0.2;
+					sounds[selectedSound].sampleReverse.width = this.leftwidth * 0.15
+			 		sounds[selectedSound].sampleReverse.pos  = createVector(this.pos.x + this.leftwidth / 8 * 6 - sounds[selectedSound].sampleReverse.width / 2 , this.formtop + this.threeheight * 0.8 - sounds[selectedSound].sampleReverse.height / 2); 
+			 		sounds[selectedSound].samplePlay.height = this.threeheight * 0.2;
+			 		sounds[selectedSound].samplePlay.pos  = createVector(this.pos.x + this.leftwidth / 8 * 7.2 - sounds[selectedSound].samplePlay.width / 2 , this.formtop + this.threeheight * 0.8 - sounds[selectedSound].samplePlay.height / 2); 
 
-					sounds[currentSound].delayTime.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.2);
-			 		sounds[currentSound].delayTime.size = knobSize;
-			 		sounds[currentSound].delayFeedback.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.55);
-			 		sounds[currentSound].delayFeedback.size = knobSize;
-			 		sounds[currentSound].delayFilterFreq.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.85);
-			 		sounds[currentSound].delayFilterFreq.size = knobSize;
+					sounds[selectedSound].delayTime.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.2);
+			 		sounds[selectedSound].delayTime.size = knobSize;
+			 		sounds[selectedSound].delayFeedback.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.55);
+			 		sounds[selectedSound].delayFeedback.size = knobSize;
+			 		sounds[selectedSound].delayFilterFreq.pos = createVector(this.pos.x + this.leftwidth * 0.2, this.formtop + this.threeheight * 1.85);
+			 		sounds[selectedSound].delayFilterFreq.size = knobSize;
 
-					sounds[currentSound].distortionAmount.pos = createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.2);
-					sounds[currentSound].distortionAmount.size = knobSize;
-					sounds[currentSound].distortionSampling.pos	= createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.55);
-					sounds[currentSound].distortionSampling.size = knobSize;
+					sounds[selectedSound].distortionAmount.pos = createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.2);
+					sounds[selectedSound].distortionAmount.size = knobSize;
+					sounds[selectedSound].distortionSampling.pos	= createVector(this.pos.x + this.leftwidth * 0.4, this.formtop + this.threeheight * 1.55);
+					sounds[selectedSound].distortionSampling.size = knobSize;
 
-					sounds[currentSound].arpSelector.height = this.threeheight * 0.6;
-					sounds[currentSound].arpSelector.width = this.leftwidth * 0.45;
-			 		sounds[currentSound].arpSelector.pos = createVector(this.pos.x + this.leftwidth - 10 - sounds[currentSound].arpSelector.width, this.formtop + this.threeheight * 2 - sounds[currentSound].arpSelector.height);
+					sounds[selectedSound].arpSelector.height = this.threeheight * 0.6;
+					sounds[selectedSound].arpSelector.width = this.leftwidth * 0.45;
+			 		sounds[selectedSound].arpSelector.pos = createVector(this.pos.x + this.leftwidth - 10 - sounds[selectedSound].arpSelector.width, this.formtop + this.threeheight * 2 - sounds[selectedSound].arpSelector.height);
 
-			 		sounds[currentSound].arpButton.width = sounds[currentSound].arpSelector.width;
-			 		sounds[currentSound].arpButton.height = this.threeheight * 0.25
-			 		sounds[currentSound].arpButton.pos = createVector(sounds[currentSound].arpSelector.pos.x, this.formtop + this.threeheight * 1.1 );
-			 		sounds[currentSound].arpKnob.pos = createVector(sounds[currentSound].arpSelector.pos.x + knobSize, this.formtop + this.threeheight * 1.2 );
+			 		sounds[selectedSound].arpButton.width = sounds[selectedSound].arpSelector.width;
+			 		sounds[selectedSound].arpButton.height = this.threeheight * 0.25
+			 		sounds[selectedSound].arpButton.pos = createVector(sounds[selectedSound].arpSelector.pos.x, this.formtop + this.threeheight * 1.1 );
+			 		sounds[selectedSound].arpKnob.pos = createVector(sounds[selectedSound].arpSelector.pos.x + knobSize, this.formtop + this.threeheight * 1.2 );
 
 					break;
 			}
@@ -4308,11 +4336,11 @@ function SoundForm(){
 			textStyle(BOLD);
 			textSize(height * 0.028);
 			
-			if (sounds[currentSound].soundType.value == 0){
+			if (sounds[selectedSound].soundType.value == 0){
 				text("OSC 1",this.pos.x + this.pos.w * 0.04, this.formtop + this.threeheight * 0.2);
 				text("OSC 2",this.pos.x + this.pos.w * 0.36, this.formtop + this.threeheight * 0.2);
 				text("OSC 3",this.pos.x + this.pos.w * 0.04, this.formtop + this.threeheight * 0.68);
-			} else if (sounds[currentSound].soundType.value == 1){
+			} else if (sounds[selectedSound].soundType.value == 1){
 				text("NOISE",this.pos.x + this.pos.w * 0.04, this.formtop + this.threeheight * 0.2);
 			}
 			
@@ -4328,70 +4356,70 @@ function SoundForm(){
 		pop();
 
 		pop();
-		this.nameText.value(sounds[currentSound].label); 
+		this.nameText.value(sounds[selectedSound].label); 
 		this.nameText.show();
 
 		this.presets.show();
 		this.envelopeSelect.show()
 
-		sounds[currentSound].soundType.display();
+		sounds[selectedSound].soundType.display();
 
-		sounds[currentSound].filterFreq.display();
-		if (sounds[currentSound].filterType.value != 4 && sounds[currentSound].filterType.value != 5) {
-			sounds[currentSound].filterRes.display();
+		sounds[selectedSound].filterFreq.display();
+		if (sounds[selectedSound].filterType.value != 4 && sounds[selectedSound].filterType.value != 5) {
+			sounds[selectedSound].filterRes.display();
 		} else {
 			fill(200);
-			ellipse(sounds[currentSound].filterRes.pos.x, sounds[currentSound].filterRes.pos.y, knobSize);
+			ellipse(sounds[selectedSound].filterRes.pos.x, sounds[selectedSound].filterRes.pos.y, knobSize);
 		}
-		if (sounds[currentSound].filterType.value >= 4 && sounds[currentSound].filterType.value <= 6) {
-			sounds[currentSound].filterGain.display();
+		if (sounds[selectedSound].filterType.value >= 4 && sounds[selectedSound].filterType.value <= 6) {
+			sounds[selectedSound].filterGain.display();
 		} else {
 			fill(200);
-			ellipse(sounds[currentSound].filterGain.pos.x, sounds[currentSound].filterGain.pos.y, knobSize);
+			ellipse(sounds[selectedSound].filterGain.pos.x, sounds[selectedSound].filterGain.pos.y, knobSize);
 		}
 
-		sounds[currentSound].filterType.display();
-		if (sounds[currentSound].soundType.value != 2) sounds[currentSound].filterLink.display();
+		sounds[selectedSound].filterType.display();
+		if (sounds[selectedSound].soundType.value != 2) sounds[selectedSound].filterLink.display();
 
-		sounds[currentSound].LFO1Freq.display();
-		//if ( sounds[currentSound].LFO1Binder.value != 1 && sounds[currentSound].LFO1Binder.value != 2) 
-		sounds[currentSound].LFO1Amount.display();
-		sounds[currentSound].LFO1Wave.display();
-		sounds[currentSound].LFO1Binder.display();
-		sounds[currentSound].LFO1Link.display();
+		sounds[selectedSound].LFO1Freq.display();
+		//if ( sounds[selectedSound].LFO1Binder.value != 1 && sounds[selectedSound].LFO1Binder.value != 2) 
+		sounds[selectedSound].LFO1Amount.display();
+		sounds[selectedSound].LFO1Wave.display();
+		sounds[selectedSound].LFO1Binder.display();
+		sounds[selectedSound].LFO1Link.display();
 
-		sounds[currentSound].LFO2Freq.display();
-		//if ( sounds[currentSound].LFO1Binder.value != 1 && sounds[currentSound].LFO1Binder.value != 2) 
-			sounds[currentSound].LFO2Amount.display();
-		sounds[currentSound].LFO2Wave.display();
-		sounds[currentSound].LFO2Binder.display();
-		sounds[currentSound].LFO2Link.display();
+		sounds[selectedSound].LFO2Freq.display();
+		//if ( sounds[selectedSound].LFO1Binder.value != 1 && sounds[selectedSound].LFO1Binder.value != 2) 
+			sounds[selectedSound].LFO2Amount.display();
+		sounds[selectedSound].LFO2Wave.display();
+		sounds[selectedSound].LFO2Binder.display();
+		sounds[selectedSound].LFO2Link.display();
 
 		if (this.envelopeSelect.selected() == "Sound"){
-			sounds[currentSound].attackTime.display();
-			sounds[currentSound].decayTime.display();
-			sounds[currentSound].susPercent.display();
-			sounds[currentSound].releaseTime.display();
+			sounds[selectedSound].attackTime.display();
+			sounds[selectedSound].decayTime.display();
+			sounds[selectedSound].susPercent.display();
+			sounds[selectedSound].releaseTime.display();
 			
-			sounds[currentSound].releaseLevel.display();
-			sounds[currentSound].attackLevel.display();
+			sounds[selectedSound].releaseLevel.display();
+			sounds[selectedSound].attackLevel.display();
 
-			sounds[currentSound].ADSRMultiplier.display();
-			sounds[currentSound].ADSRExpo.display();
+			sounds[selectedSound].ADSRMultiplier.display();
+			sounds[selectedSound].ADSRExpo.display();
 			
-			sounds[currentSound].ADSRChance.display();
+			sounds[selectedSound].ADSRChance.display();
 
 		} else {
-			sounds[currentSound].filterattackTime.display();
-			sounds[currentSound].filterdecayTime.display();
-			sounds[currentSound].filtersusPercent.display();
-			sounds[currentSound].filterreleaseTime.display();
+			sounds[selectedSound].filterattackTime.display();
+			sounds[selectedSound].filterdecayTime.display();
+			sounds[selectedSound].filtersusPercent.display();
+			sounds[selectedSound].filterreleaseTime.display();
 
-			sounds[currentSound].filterreleaseLevel.display();
-			sounds[currentSound].filterattackLevel.display();
+			sounds[selectedSound].filterreleaseLevel.display();
+			sounds[selectedSound].filterattackLevel.display();
 
-			sounds[currentSound].filterADSRMultiplier.display();
-			sounds[currentSound].filterADSRExpo.display();
+			sounds[selectedSound].filterADSRMultiplier.display();
+			sounds[selectedSound].filterADSRExpo.display();
 		}
 		
 		//adsr panel!
@@ -4410,21 +4438,21 @@ function SoundForm(){
 			strokeWeight(1);
 
 			if (this.envelopeSelect.selected() == "Sound"){
-				var attlev = map(sounds[currentSound].attackLevel.value, 1, 0, 0, maxy * 0.5);
-				var rellev = map(sounds[currentSound].releaseLevel.value, 1, 0, 0, maxy);
+				var attlev = map(sounds[selectedSound].attackLevel.value, 1, 0, 0, maxy * 0.5);
+				var rellev = map(sounds[selectedSound].releaseLevel.value, 1, 0, 0, maxy);
 
-				var att = tx + 2 + map(sounds[currentSound].attackTime.value, 0, 1, 0, maxx / 3 );
-				var dec = map(sounds[currentSound].decayTime.value, 0, 1, att, att + maxx / 3 );
-				var rel = map(sounds[currentSound].releaseTime.value, 0, 1, dec, dec + maxx / 3 );
-				var sus = ty + map(sounds[currentSound].susPercent.value, 0, 1, 0, maxy - attlev);
+				var att = tx + 2 + map(sounds[selectedSound].attackTime.value, 0, 1, 0, maxx / 3 );
+				var dec = map(sounds[selectedSound].decayTime.value, 0, 1, att, att + maxx / 3 );
+				var rel = map(sounds[selectedSound].releaseTime.value, 0, 1, dec, dec + maxx / 3 );
+				var sus = ty + map(sounds[selectedSound].susPercent.value, 0, 1, 0, maxy - attlev);
 			} else {
-				var attlev = map(sounds[currentSound].filterattackLevel.value, 1, 0, 0, maxy * 0.5);
-				var rellev = map(sounds[currentSound].filterreleaseLevel.value, 1, 0, 0, maxy);
+				var attlev = map(sounds[selectedSound].filterattackLevel.value, 1, 0, 0, maxy * 0.5);
+				var rellev = map(sounds[selectedSound].filterreleaseLevel.value, 1, 0, 0, maxy);
 
-				var att = tx + 2 + map(sounds[currentSound].filterattackTime.value, 0, 1, 0, maxx / 3 );
-				var dec = map(sounds[currentSound].filterdecayTime.value, 0, 1, att, att + maxx / 3 );
-				var rel = map(sounds[currentSound].filterreleaseTime.value, 0, 1, dec, dec + maxx / 3 );
-				var sus = ty + map(sounds[currentSound].filtersusPercent.value, 0, 1, 0, maxy - attlev);
+				var att = tx + 2 + map(sounds[selectedSound].filterattackTime.value, 0, 1, 0, maxx / 3 );
+				var dec = map(sounds[selectedSound].filterdecayTime.value, 0, 1, att, att + maxx / 3 );
+				var rel = map(sounds[selectedSound].filterreleaseTime.value, 0, 1, dec, dec + maxx / 3 );
+				var sus = ty + map(sounds[selectedSound].filtersusPercent.value, 0, 1, 0, maxy - attlev);
 			}
 			
 			beginShape();
@@ -4440,48 +4468,48 @@ function SoundForm(){
 
 
 
-		switch(sounds[currentSound].soundType.value){
+		switch(sounds[selectedSound].soundType.value){
 			case 0:
 				
-	    		sounds[currentSound].osc1Detune.display();
-	    		sounds[currentSound].osc1Wave.display();
+	    		sounds[selectedSound].osc1Detune.display();
+	    		sounds[selectedSound].osc1Wave.display();
 
-				sounds[currentSound].osc2Detune.display();
-				sounds[currentSound].osc2Octave.display();
-				sounds[currentSound].osc2Wave.display();
+				sounds[selectedSound].osc2Detune.display();
+				sounds[selectedSound].osc2Octave.display();
+				sounds[selectedSound].osc2Wave.display();
 
-				sounds[currentSound].osc3Amount.display();
-				sounds[currentSound].osc3Detune.display();
-				sounds[currentSound].osc3Octave.display();
-				sounds[currentSound].osc3Wave.display();
+				sounds[selectedSound].osc3Amount.display();
+				sounds[selectedSound].osc3Detune.display();
+				sounds[selectedSound].osc3Octave.display();
+				sounds[selectedSound].osc3Wave.display();
 
-				sounds[currentSound].oscMix.display();
-				sounds[currentSound].RingMod.display();
-				sounds[currentSound].oscRamp.display();
-				sounds[currentSound].glideSelector.display();
-				sounds[currentSound].rollingChords.display();
+				sounds[selectedSound].oscMix.display();
+				sounds[selectedSound].RingMod.display();
+				sounds[selectedSound].oscRamp.display();
+				sounds[selectedSound].glideSelector.display();
+				sounds[selectedSound].rollingChords.display();
 			
-				sounds[currentSound].delayTime.display();
-				sounds[currentSound].delayFeedback.display();
-				sounds[currentSound].delayFilterFreq.display();
+				sounds[selectedSound].delayTime.display();
+				sounds[selectedSound].delayFeedback.display();
+				sounds[selectedSound].delayFilterFreq.display();
 
-				sounds[currentSound].distortionAmount.display();
-				sounds[currentSound].distortionSampling.display();
+				sounds[selectedSound].distortionAmount.display();
+				sounds[selectedSound].distortionSampling.display();
 
 				
-				sounds[currentSound].arpButton.display();
-				sounds[currentSound].arpSelector.display();
-				sounds[currentSound].arpKnob.display();
+				sounds[selectedSound].arpButton.display();
+				sounds[selectedSound].arpSelector.display();
+				sounds[selectedSound].arpKnob.display();
 
 				push();
 					fill(0);
 					textSize(25);
-					if (playing) sounds[currentSound].arpKnob.value = sounds[currentSound].arpCounter -1;
-					if (sounds[currentSound].arpKnob.value == -1) sounds[currentSound].arpKnob.value = sounds[currentSound].arp.length -1;
-					if (sounds[currentSound].arp[sounds[currentSound].arpKnob.value] != undefined){
-						text( midiToString( sounds[currentSound].arp[sounds[currentSound].arpKnob.value] ), sounds[currentSound].arpButton.pos.x + sounds[currentSound].arpButton.width * 0.7, sounds[currentSound].arpButton.pos.y + sounds[currentSound].arpButton.height * 0.7 );
+					if (playing) sounds[selectedSound].arpKnob.value = sounds[selectedSound].arpCounter -1;
+					if (sounds[selectedSound].arpKnob.value == -1) sounds[selectedSound].arpKnob.value = sounds[selectedSound].arp.length -1;
+					if (sounds[selectedSound].arp[sounds[selectedSound].arpKnob.value] != undefined){
+						text( midiToString( sounds[selectedSound].arp[sounds[selectedSound].arpKnob.value] ), sounds[selectedSound].arpButton.pos.x + sounds[selectedSound].arpButton.width * 0.7, sounds[selectedSound].arpButton.pos.y + sounds[selectedSound].arpButton.height * 0.7 );
 					}else{
-						text( "--", sounds[currentSound].arpButton.pos.x + sounds[currentSound].arpButton.width * 0.7, sounds[currentSound].arpButton.pos.y + sounds[currentSound].arpButton.height * 0.7 );
+						text( "--", sounds[selectedSound].arpButton.pos.x + sounds[selectedSound].arpButton.width * 0.7, sounds[selectedSound].arpButton.pos.y + sounds[selectedSound].arpButton.height * 0.7 );
 					}
 				pop();
 
@@ -4489,14 +4517,14 @@ function SoundForm(){
 				break;
 			case 1:
 				
-					sounds[currentSound].delayTime.display();
-					sounds[currentSound].delayFeedback.display();
-					sounds[currentSound].delayFilterFreq.display();
+					sounds[selectedSound].delayTime.display();
+					sounds[selectedSound].delayFeedback.display();
+					sounds[selectedSound].delayFilterFreq.display();
 
-					sounds[currentSound].distortionAmount.display();
-					sounds[currentSound].distortionSampling.display();
+					sounds[selectedSound].distortionAmount.display();
+					sounds[selectedSound].distortionSampling.display();
 
-					sounds[currentSound].noiseSelector.display();
+					sounds[selectedSound].noiseSelector.display();
 
 				break;
 			case 2:
@@ -4511,7 +4539,7 @@ function SoundForm(){
 					noFill();
 				  	rect(tx, ty, maxx, maxy);
 
-				  	if (sounds[currentSound].sample.duration() == 0){
+				  	if (sounds[selectedSound].sample.duration() == 0){
 				  		noStroke()
 				  		fill(188, 90, 18, 150)
 				  		textSize(maxy * 0.28);
@@ -4520,11 +4548,11 @@ function SoundForm(){
 				  	}else{
 					  	beginShape();
 					  	stroke(188, 90, 18);
-					 	for (var i = 0; i < sounds[currentSound].sampleWaveSet.length; i++){
-					 		var x = map(i, 0, sounds[currentSound].sampleWaveSet.length, tx, tx + maxx);
+					 	for (var i = 0; i < sounds[selectedSound].sampleWaveSet.length; i++){
+					 		var x = map(i, 0, sounds[selectedSound].sampleWaveSet.length, tx, tx + maxx);
 					 		
-					 		var y = map( sounds[currentSound].sampleWaveSet[i] , -1, 1, ty + maxy, ty );
-					 		var y2 = map( sounds[currentSound].sampleWaveSet[i] , -1, 1, ty, ty + maxy);
+					 		var y = map( sounds[selectedSound].sampleWaveSet[i] , -1, 1, ty + maxy, ty );
+					 		var y2 = map( sounds[selectedSound].sampleWaveSet[i] , -1, 1, ty, ty + maxy);
 					    	vertex(x,y);
 					    	vertex(x,y2);
 					  	}
@@ -4536,45 +4564,45 @@ function SoundForm(){
 				  	
 				  	//start
 				  	stroke(40,220,40);
-			  		time = map(sounds[currentSound].sampleStart.value, 0, 1, tx, tx + maxx)
+			  		time = map(sounds[selectedSound].sampleStart.value, 0, 1, tx, tx + maxx)
 			  	  	line(time, ty, time, ty + maxy);
 
 			  	  	//end
 			   		stroke(40,40,220);
-			  		time = map(sounds[currentSound].sampleStop.value, 0, 1, tx, tx + maxx)
+			  		time = map(sounds[selectedSound].sampleStop.value, 0, 1, tx, tx + maxx)
 			  	  	line(time, ty, time, ty + maxy);
 				  	
 			  	  	
 				pop();
 
-				sounds[currentSound].sampleStart.display();
-				sounds[currentSound].sampleStop.display();
-				sounds[currentSound].sampleTune.display();
+				sounds[selectedSound].sampleStart.display();
+				sounds[selectedSound].sampleStop.display();
+				sounds[selectedSound].sampleTune.display();
 
-				sounds[currentSound].sampleLoop.display();
-				sounds[currentSound].sampleReverse.display();
-				sounds[currentSound].samplePlay.display();
+				sounds[selectedSound].sampleLoop.display();
+				sounds[selectedSound].sampleReverse.display();
+				sounds[selectedSound].samplePlay.display();
 
-				sounds[currentSound].delayTime.display();
-				sounds[currentSound].delayFeedback.display();
-				sounds[currentSound].delayFilterFreq.display();
+				sounds[selectedSound].delayTime.display();
+				sounds[selectedSound].delayFeedback.display();
+				sounds[selectedSound].delayFilterFreq.display();
 
-				sounds[currentSound].distortionAmount.display();
-				sounds[currentSound].distortionSampling.display();
+				sounds[selectedSound].distortionAmount.display();
+				sounds[selectedSound].distortionSampling.display();
 
-				sounds[currentSound].arpButton.display();
-				sounds[currentSound].arpSelector.display();
-				sounds[currentSound].arpKnob.display();
+				sounds[selectedSound].arpButton.display();
+				sounds[selectedSound].arpSelector.display();
+				sounds[selectedSound].arpKnob.display();
 
 				push();
 					fill(0);
 					textSize(25);
-					if (playing) sounds[currentSound].arpKnob.value = sounds[currentSound].arpCounter -1;
-					if (sounds[currentSound].arpKnob.value == -1) sounds[currentSound].arpKnob.value = sounds[currentSound].arp.length -1;
-					if (sounds[currentSound].arp[sounds[currentSound].arpKnob.value] != undefined){
-						text( midiToString( sounds[currentSound].arp[sounds[currentSound].arpKnob.value] ), sounds[currentSound].arpButton.pos.x + sounds[currentSound].arpButton.width * 0.7, sounds[currentSound].arpButton.pos.y + sounds[currentSound].arpButton.height * 0.7 );
+					if (playing) sounds[selectedSound].arpKnob.value = sounds[selectedSound].arpCounter -1;
+					if (sounds[selectedSound].arpKnob.value == -1) sounds[selectedSound].arpKnob.value = sounds[selectedSound].arp.length -1;
+					if (sounds[selectedSound].arp[sounds[selectedSound].arpKnob.value] != undefined){
+						text( midiToString( sounds[selectedSound].arp[sounds[selectedSound].arpKnob.value] ), sounds[selectedSound].arpButton.pos.x + sounds[selectedSound].arpButton.width * 0.7, sounds[selectedSound].arpButton.pos.y + sounds[selectedSound].arpButton.height * 0.7 );
 					}else{
-						text( "--", sounds[currentSound].arpButton.pos.x + sounds[currentSound].arpButton.width * 0.7, sounds[currentSound].arpButton.pos.y + sounds[currentSound].arpButton.height * 0.7 );
+						text( "--", sounds[selectedSound].arpButton.pos.x + sounds[selectedSound].arpButton.width * 0.7, sounds[selectedSound].arpButton.pos.y + sounds[selectedSound].arpButton.height * 0.7 );
 					}
 				pop();
 
@@ -4586,19 +4614,19 @@ function SoundForm(){
 	}
 
 	this.displayArpCounter = function(){
-		sounds[currentSound].arpButton.display();
-		sounds[currentSound].arpSelector.display();
-		sounds[currentSound].arpKnob.display();
+		sounds[selectedSound].arpButton.display();
+		sounds[selectedSound].arpSelector.display();
+		sounds[selectedSound].arpKnob.display();
 
 		push();
 			fill(0);
 			textSize(25);
-			if (playing) sounds[currentSound].arpKnob.value = sounds[currentSound].arpCounter -1;
-			if (sounds[currentSound].arpKnob.value == -1) sounds[currentSound].arpKnob.value = sounds[currentSound].arp.length -1;
-			if (sounds[currentSound].arp[sounds[currentSound].arpKnob.value] != undefined){
-				text( midiToString( sounds[currentSound].arp[sounds[currentSound].arpKnob.value] ), sounds[currentSound].arpButton.pos.x + sounds[currentSound].arpButton.width * 0.7, sounds[currentSound].arpButton.pos.y + sounds[currentSound].arpButton.height * 0.7 );
+			if (playing) sounds[selectedSound].arpKnob.value = sounds[selectedSound].arpCounter -1;
+			if (sounds[selectedSound].arpKnob.value == -1) sounds[selectedSound].arpKnob.value = sounds[selectedSound].arp.length -1;
+			if (sounds[selectedSound].arp[sounds[selectedSound].arpKnob.value] != undefined){
+				text( midiToString( sounds[selectedSound].arp[sounds[selectedSound].arpKnob.value] ), sounds[selectedSound].arpButton.pos.x + sounds[selectedSound].arpButton.width * 0.7, sounds[selectedSound].arpButton.pos.y + sounds[selectedSound].arpButton.height * 0.7 );
 			}else{
-				text( "--", sounds[currentSound].arpButton.pos.x + sounds[currentSound].arpButton.width * 0.7, sounds[currentSound].arpButton.pos.y + sounds[currentSound].arpButton.height * 0.7 );
+				text( "--", sounds[selectedSound].arpButton.pos.x + sounds[selectedSound].arpButton.width * 0.7, sounds[selectedSound].arpButton.pos.y + sounds[selectedSound].arpButton.height * 0.7 );
 			}
 		pop();
 	}
@@ -4612,7 +4640,7 @@ function SoundForm(){
 			var ty = this.formtop + 5;
 			var maxx = this.leftwidth - 20;
 			var maxy = this.threeheight * 0.6;
-			if (sounds[currentSound].soundType.value == 2 && 
+			if (sounds[selectedSound].soundType.value == 2 && 
 				mouseX > tx && mouseX < tx + maxx &&
 	  			mouseY > ty && mouseY < ty + maxy){
 	  			
@@ -4620,45 +4648,45 @@ function SoundForm(){
 	  			return;
 	  		}
 
-			sounds[currentSound].knobs.forEach((knob)=>{
+			sounds[selectedSound].knobs.forEach((knob)=>{
 				if ((this.envelopeSelect.selected() == "Sound" && !knob.forFilter) || (this.envelopeSelect.selected() == "Filter" && !knob.forSound)){
 					knob.catch();
 				}
 			});
 
-			sounds[currentSound].soundType.catch();
+			sounds[selectedSound].soundType.catch();
 
-			sounds[currentSound].RingMod.catch();
+			sounds[selectedSound].RingMod.catch();
 
-			sounds[currentSound].glideSelector.catch();
+			sounds[selectedSound].glideSelector.catch();
 
-			if (this.envelopeSelect.selected() == "Sound") sounds[currentSound].ADSRExpo.catch();
-			if (this.envelopeSelect.selected() == "Filter") sounds[currentSound].filterADSRExpo.catch();
+			if (this.envelopeSelect.selected() == "Sound") sounds[selectedSound].ADSRExpo.catch();
+			if (this.envelopeSelect.selected() == "Filter") sounds[selectedSound].filterADSRExpo.catch();
 			
-			if (sounds[currentSound].soundType.value == 0) sounds[currentSound].osc1Wave.catch();
-			if (sounds[currentSound].soundType.value == 0) sounds[currentSound].osc2Wave.catch();
-			if (sounds[currentSound].soundType.value == 0) sounds[currentSound].osc3Wave.catch();
+			if (sounds[selectedSound].soundType.value == 0) sounds[selectedSound].osc1Wave.catch();
+			if (sounds[selectedSound].soundType.value == 0) sounds[selectedSound].osc2Wave.catch();
+			if (sounds[selectedSound].soundType.value == 0) sounds[selectedSound].osc3Wave.catch();
 
 			
-			sounds[currentSound].noiseSelector.catch();
+			sounds[selectedSound].noiseSelector.catch();
 			
-			sounds[currentSound].LFO1Wave.catch();
-			sounds[currentSound].LFO1Binder.catch();
-			sounds[currentSound].LFO1Link.catch();
+			sounds[selectedSound].LFO1Wave.catch();
+			sounds[selectedSound].LFO1Binder.catch();
+			sounds[selectedSound].LFO1Link.catch();
 
-			sounds[currentSound].LFO2Wave.catch();
-			sounds[currentSound].LFO2Binder.catch();
-			sounds[currentSound].LFO2Link.catch();
+			sounds[selectedSound].LFO2Wave.catch();
+			sounds[selectedSound].LFO2Binder.catch();
+			sounds[selectedSound].LFO2Link.catch();
 
-			sounds[currentSound].filterType.catch();
-			sounds[currentSound].filterLink.catch();
+			sounds[selectedSound].filterType.catch();
+			sounds[selectedSound].filterLink.catch();
 
-			sounds[currentSound].arpButton.catch();
-			sounds[currentSound].arpSelector.catch();
+			sounds[selectedSound].arpButton.catch();
+			sounds[selectedSound].arpSelector.catch();
 
-			sounds[currentSound].sampleLoop.catch();
-			sounds[currentSound].sampleReverse.catch();
-			sounds[currentSound].samplePlay.catch();
+			sounds[selectedSound].sampleLoop.catch();
+			sounds[selectedSound].sampleReverse.catch();
+			sounds[selectedSound].samplePlay.catch();
 
 			this.render = true;
 			
@@ -4672,7 +4700,7 @@ function SoundForm(){
 			sequencerForm.display();
 			patternForm.display();
 
-			currentSound = undefined;
+			soundForm.inFront = false;
 			for (var i = 0; i < patternForm.soundButtons.length -1; i++){
 				patternForm.soundButtons[i].active = false;
 			}
@@ -4685,7 +4713,7 @@ function SoundForm(){
 
 	this.release = function(){
 
-		sounds[currentSound].knobs.forEach((knob)=>{
+		sounds[selectedSound].knobs.forEach((knob)=>{
 			knob.release();
 		});	
 	}
@@ -4696,9 +4724,9 @@ function SoundForm(){
 
 	this.drag = function(amount){
 		
-		sounds[currentSound].knobs.forEach((knob)=>{
+		sounds[selectedSound].knobs.forEach((knob)=>{
 			if ((this.envelopeSelect.selected() == "Sound" && !knob.forFilter) || (this.envelopeSelect.selected() == "Filter" && !knob.forSound)){
-				knob.drag(amount, currentSound);
+				knob.drag(amount, selectedSound);
 			}
 		});
 
@@ -6021,7 +6049,7 @@ class SoundObject{
 // 8""88888P'    "888" `Y8bod8P'  888bod8P' o888bood8P'   `V88V"V8P'   "888"   "888" `Y8bod8P' o888o o888o 
 //                                888                                                                      
 //                               o888o                                                                    
-// stupid little thing im too afraid to delete.......
+// used in spacing the beat indicator in patternform :s
 
 
 function StepButtonObject(x,y,s, i, a){
@@ -6113,14 +6141,14 @@ function FunctionButtonObject(x,y,h, lbl){
 					patternForm.patternMenu.pos = createVector(mouseX, mouseY);
 		
 				}else if (this.label == "   "){
-					arpMenu.pos = createVector(sounds[currentSound].arpButton.pos.x - 10, mouseY);
+					arpMenu.pos = createVector(sounds[selectedSound].arpButton.pos.x - 10, mouseY);
 				}
 
 
 			}else{
 
 				if (index != undefined){ // this is one of the soundbuttons on the patternform
-					currentSound = index;
+					soundForm.inFront = true;
 					selectedSound = index;
 					soundForm.layOut();
 					soundForm.render = true;
@@ -6130,26 +6158,26 @@ function FunctionButtonObject(x,y,h, lbl){
 
 				}else if (this.active){
 
-					if (this.label == "   " && dist(mouseX, mouseY, sounds[currentSound].arpKnob.pos.x, sounds[currentSound].arpKnob.pos.y) > sounds[currentSound].arpKnob.size){
+					if (this.label == "   " && dist(mouseX, mouseY, sounds[selectedSound].arpKnob.pos.x, sounds[selectedSound].arpKnob.pos.y) > sounds[selectedSound].arpKnob.size){
 						this.active = false;
 					}else if( this.label != "   "){
 		 				this.active = false;
 		 				if (this.label == "Play"){
-			 				sounds[currentSound].sample.stop();
+			 				sounds[selectedSound].sample.stop();
 
 			 			} else if (this.label == "Expo") {
 			 				if (soundForm.envelopeSelect.selected() == "Sound"){
-								sounds[currentSound].envOsc1.setExp(false);
-								sounds[currentSound].envOsc2.setExp(false);
-								sounds[currentSound].envOsc3.setExp(false);
-								sounds[currentSound].envNoise.setExp(false);
+								sounds[selectedSound].envOsc1.setExp(false);
+								sounds[selectedSound].envOsc2.setExp(false);
+								sounds[selectedSound].envOsc3.setExp(false);
+								sounds[selectedSound].envNoise.setExp(false);
 							} else {
-								sounds[currentSound].envFilter.setExp(false);
+								sounds[selectedSound].envFilter.setExp(false);
 							}
 
 						} else if (this.label == " <<< RING <<< \n <<< MOD  <<< ") {
 
-							sounds[currentSound].connectRingMod();
+							sounds[selectedSound].connectRingMod();
 			 			}
 			 		}
 
@@ -6159,11 +6187,11 @@ function FunctionButtonObject(x,y,h, lbl){
 						patternForm.patternMenu.pos = createVector(mouseX, mouseY);
 					}
 
-					if (this.label == "   " && dist(mouseX, mouseY, sounds[currentSound].arpKnob.pos.x, sounds[currentSound].arpKnob.pos.y) > sounds[currentSound].arpKnob.size){
+					if (this.label == "   " && dist(mouseX, mouseY, sounds[selectedSound].arpKnob.pos.x, sounds[selectedSound].arpKnob.pos.y) > sounds[selectedSound].arpKnob.size){
 						this.active = !this.active;
 
-					}else if(this.label == "Reverse" && sounds[currentSound].sample.duration() != 0){
-						sounds[currentSound].sample.reverseBuffer();
+					}else if(this.label == "Reverse" && sounds[selectedSound].sample.duration() != 0){
+						sounds[selectedSound].sample.reverseBuffer();
 						SampleLoaded();
 
 					}else if(this.label == "Repeat"){
@@ -6194,18 +6222,18 @@ function FunctionButtonObject(x,y,h, lbl){
 
 					}else if(this.label == "Expo"){
 						if (soundForm.envelopeSelect.selected() == "Sound"){
-								sounds[currentSound].envOsc1.setExp(true);
-								sounds[currentSound].envOsc2.setExp(true);
-								sounds[currentSound].envOsc3.setExp(true);
-								sounds[currentSound].envNoise.setExp(true);
+								sounds[selectedSound].envOsc1.setExp(true);
+								sounds[selectedSound].envOsc2.setExp(true);
+								sounds[selectedSound].envOsc3.setExp(true);
+								sounds[selectedSound].envNoise.setExp(true);
 							} else {
-								sounds[currentSound].envFilter.setExp(true);
+								sounds[selectedSound].envFilter.setExp(true);
 							}
 						this.active = true;
 
-					}else if(this.label == "Play" && sounds[currentSound].sample.duration() != 0){
-						sounds[currentSound].playNote(60);
-						if (sounds[currentSound].sampleLoop.active) {
+					}else if(this.label == "Play" && sounds[selectedSound].sample.duration() != 0){
+						sounds[selectedSound].playNote(60);
+						if (sounds[selectedSound].sampleLoop.active) {
 							this.active = !playing;
 						} else {
 							this.active = false;
@@ -6217,7 +6245,7 @@ function FunctionButtonObject(x,y,h, lbl){
 					}else if(this.label == " <<< RING <<< \n <<< MOD  <<< "){
 						
 						this.active = true;
-						sounds[currentSound].connectRingMod();						
+						sounds[selectedSound].connectRingMod();						
 		 			}
 		 		}
 		 	}
@@ -6433,22 +6461,22 @@ function WaveSelector(arr, out){
 		if (mouseX > this.pos.x && mouseX < this.pos.x + this.width * 0.2 && mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			this.value = 0;
 			//
-			sounds[currentSound].waveChange();
+			sounds[selectedSound].waveChange();
 		
 		}else if (mouseX > this.pos.x + this.width * 0.2 && mouseX < this.pos.x + this.width * 0.35 && mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			this.value = 1;
 			//
-			sounds[currentSound].waveChange();	
+			sounds[selectedSound].waveChange();	
 		
 		}else if (mouseX > this.pos.x + this.width * 0.35 && mouseX < this.pos.x + this.width * 0.55 && mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			this.value = 2;
 			//
-			sounds[currentSound].waveChange();
+			sounds[selectedSound].waveChange();
 
 		}else if (mouseX > this.pos.x + this.width * 0.55 && mouseX < this.pos.x + this.width * 0.73 && mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			this.value = 3;
 			//
-			sounds[currentSound].waveChange();
+			sounds[selectedSound].waveChange();
 		} else if (mouseX > this.pos.x + this.width * 0.73 && mouseX < this.pos.x + this.width && mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			this.value = 4;
 			waveForm.set(soundForm.pos.x + soundForm.pos.w * 0.15, soundForm.pos.y + soundForm.pos.h * 0.125, soundForm.pos.w * 0.8, soundForm.pos.h * 0.75, this.array, this.output);
@@ -6549,49 +6577,49 @@ function FilterSelector(){
 		if (mouseX > this.pos.x && mouseX < this.pos.x + 24 && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 0;	
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 
 		}else if (mouseX > this.pos.x + 24 && mouseX < this.pos.x + 40 && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 1;
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 		
 		}else if (mouseX > this.pos.x + 40 && mouseX < this.pos.x + 57 && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 2;
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 
 		}else if (mouseX > this.pos.x + 57 && mouseX < this.pos.x + 75 && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 3;
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 
 
 
 		}else if (mouseX > this.pos.x + 75 && mouseX < this.pos.x + 93 && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 4;
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 
 		}else if (mouseX > this.pos.x + 93 && mouseX < this.pos.x + 112 && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 5;
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 
 		}else if (mouseX > this.pos.x + 112 && mouseX < this.pos.x + 147 && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 6;
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 
 		}else if (mouseX > this.pos.x + 147 && mouseX < this.pos.x + 193 && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 7;
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 
 		}else if (mouseX > this.pos.x + 193 && mouseX < this.pos.x + this.width && mouseY > this.pos.y && mouseY < this.pos.y + 20){
 			this.value = 8;
 			
-			sounds[currentSound].setFilterType();
+			sounds[selectedSound].setFilterType();
 
 		}
 	}
@@ -6814,17 +6842,17 @@ function SoundSelector(){
 	this.catch = function(){
 		if (mouseX > this.pos.x && mouseX < this.pos.x + this.width / 2.5 && mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			this.value = 0;	
-			sounds[currentSound].start()
+			sounds[selectedSound].start()
 			soundForm.layOut();
 					
 		}else if (mouseX > this.pos.x + this.width / 2.5 && mouseX < this.pos.x + this.width / 2.5 + this.width / 5 && mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			this.value = 1;
-			sounds[currentSound].start()
+			sounds[selectedSound].start()
 			soundForm.layOut();
 		
 		}else if (mouseX > this.pos.x + this.width / 2.5 + this.width / 5 && mouseX < this.pos.x + this.width && mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			this.value = 2;
-			sounds[currentSound].start()
+			sounds[selectedSound].start()
 			soundForm.layOut();
 		}
 	}
@@ -6984,21 +7012,21 @@ function NoiseSelector(){
 			
 			this.value = 'white';
 			
-			sounds[currentSound].setNoiseType();
+			sounds[selectedSound].setNoiseType();
 		
 		}else if (mouseX > this.pos.x + this.width * 0.35 && mouseX < this.pos.x + this.width * 0.65 &&
 		 	 mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			
 			this.value = 'brown';
 			
-			sounds[currentSound].setNoiseType();
+			sounds[selectedSound].setNoiseType();
 		
 		}else if (mouseX > this.pos.x + this.width * 0.65 && mouseX < this.pos.x + this.width &&
 			 mouseY > this.pos.y && mouseY < this.pos.y + this.height){
 			
 			this.value = 'pink';
 			
-			sounds[currentSound].setNoiseType();
+			sounds[selectedSound].setNoiseType();
 
 		}
 
@@ -7053,7 +7081,7 @@ function ArpSelector(){
 			stroke(0);
 			textSize(this.height * 0.15);
 			rect(this.pos.x, this.pos.y, this.width, this.height);
-			if (sounds[currentSound].arpButton.active){
+			if (sounds[selectedSound].arpButton.active){
 				fill(100);
 				rect(this.pos.x, this.pos.y, this.width, this.height * 0.32);
 			}else{
@@ -7211,7 +7239,7 @@ function LFOBinder(){
 			if ( !(x == 0 && (y == 1 || y == 2 || y == 3)) && this.options[offset] != "" && (offset != this.otherBinder.value || offset == 0)){
 				
 				this.value = offset;
-				sounds[currentSound].bindLFO({lfo: this.LFO, binder: this, wave: this.wave, array: this.array, amount: this.amount}, this.otherLFO);
+				sounds[selectedSound].bindLFO({lfo: this.LFO, binder: this, wave: this.wave, array: this.array, amount: this.amount}, this.otherLFO);
 			}
 		}
 	}
@@ -7541,20 +7569,20 @@ function ArpMenu(){
 		if(mouseX > this.pos.x && mouseX < this.pos.x + this.width && 
 			mouseY > this.pos.y && mouseY < this.pos.y + this.height * 0.33){
 			
-			sounds[currentSound].arp = [];
-			sounds[currentSound].arpCounter = 0;
-			sounds[currentSound].arpKnob.set(0,0,0,1);
+			sounds[selectedSound].arp = [];
+			sounds[selectedSound].arpCounter = 0;
+			sounds[selectedSound].arpKnob.set(0,0,0,1);
 
 		}else if(mouseX > this.pos.x && mouseX < this.pos.x + this.width && 
 			mouseY > this.pos.y + this.height * 0.33 && mouseY < this.pos.y + this.height * 0.66){
 
-			sounds[currentSound].arp.splice(sounds[currentSound].arpKnob.value, 1);
+			sounds[selectedSound].arp.splice(sounds[selectedSound].arpKnob.value, 1);
 			this.changeArpKnob();
 
 		}else if(mouseX > this.pos.x && mouseX < this.pos.x + this.width && 
 			mouseY > this.pos.y + this.height * 0.66 && mouseY < this.pos.y + this.height){
 			
-			sounds[currentSound].arp.pop();
+			sounds[selectedSound].arp.pop();
 			this.changeArpKnob();
 		}
 
@@ -7564,15 +7592,15 @@ function ArpMenu(){
 	}
 
 	this.changeArpKnob = function(){
-		if (sounds[currentSound].arp.length == 0 && sounds[currentSound].arp.length == 0){
-				sounds[currentSound].arpCounter = 0;
+		if (sounds[selectedSound].arp.length == 0 && sounds[selectedSound].arp.length == 0){
+				sounds[selectedSound].arpCounter = 0;
 			}
 
-			let max = sounds[currentSound].arp.length -1;
-			if (sounds[currentSound].arpKnob.value > max) sounds[currentSound].arpKnob.value = max;
-			if (sounds[currentSound].arpKnob.value < 0) sounds[currentSound].arpKnob.value = 0;
+			let max = sounds[selectedSound].arp.length -1;
+			if (sounds[selectedSound].arpKnob.value > max) sounds[selectedSound].arpKnob.value = max;
+			if (sounds[selectedSound].arpKnob.value < 0) sounds[selectedSound].arpKnob.value = 0;
 
-			sounds[currentSound].arpKnob.set(0, max, sounds[currentSound].arpKnob.value, 1);
+			sounds[selectedSound].arpKnob.set(0, max, sounds[selectedSound].arpKnob.value, 1);
 	}
 }
 
