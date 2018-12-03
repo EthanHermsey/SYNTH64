@@ -172,8 +172,10 @@ function setup() {
 
 	//init view
 	background(backGroundColor);
-	sequencerForm.display();
-	patternForm.display();
+	setTimeout( function(){
+		sequencerForm.display();
+		patternForm.display();
+	}, 200);
 
 	//'warning' for non-chrome browsers
 	warning = document.querySelector(".warningDiv");

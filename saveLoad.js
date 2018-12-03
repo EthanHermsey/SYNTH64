@@ -430,15 +430,15 @@ try{
 		if (jsonfile[i].ADSRChance != undefined) sounds[i].ADSRChance.value = jsonfile[i].ADSRChance;
 
 		if (jsonfile[i].osc1Detune != undefined){
-			sounds[i].osc1DetuneFine.value = jsonfile[i].osc1Detune;
+			sounds[i].osc1DetuneFine.value = jsonfile[i].osc1Detune || 0;
 			sounds[i].osc1DetuneCoarse.value = sounds[i].osc1DetuneCoarse.startValue;
 		} else {
 			sounds[i].osc1DetuneCoarse.value = jsonfile[i].osc1DetuneCoarse;
 			sounds[i].osc1DetuneFine.value = jsonfile[i].osc1DetuneFine;
 		}
 		if (jsonfile[i].osc2Detune != undefined){
-			sounds[i].osc2DetuneCoarse.value = jsonfile[i].osc2Octave * 12;
-			sounds[i].osc2DetuneFine.value = jsonfile[i].osc2Detune;
+			sounds[i].osc2DetuneCoarse.value = (jsonfile[i].osc2Octave * 12) || 0;
+			sounds[i].osc2DetuneFine.value = jsonfile[i].osc2Detune || 0;
 		} else {
 			sounds[i].osc2DetuneCoarse.value = jsonfile[i].osc2DetuneCoarse;
 			sounds[i].osc2DetuneFine.value = jsonfile[i].osc2DetuneFine;
@@ -446,11 +446,11 @@ try{
 		
 		if (jsonfile[i].osc3Amount != undefined) sounds[i].osc3Amount.value = jsonfile[i].osc3Amount;
 		if (jsonfile[i].osc3Octave != undefined){
-			sounds[i].osc3DetuneCoarse.value = jsonfile[i].osc3Octave * 12;
+			sounds[i].osc3DetuneCoarse.value = (jsonfile[i].osc3Octave * 12) || 0;
 			sounds[i].osc3DetuneFine.value = 0;
 		} else {
-			sounds[i].osc3DetuneCoarse.value = jsonfile[i].osc3DetuneCoarse;
-			sounds[i].osc3DetuneFine.value = jsonfile[i].osc3DetuneFine;
+			sounds[i].osc3DetuneCoarse.value = jsonfile[i].osc3DetuneCoarse || 0;
+			sounds[i].osc3DetuneFine.value = jsonfile[i].osc3DetuneFine || 0;
 		}
 
 		
