@@ -445,9 +445,9 @@ try{
 		}	
 		
 		if (jsonfile[i].osc3Amount != undefined) sounds[i].osc3Amount.value = jsonfile[i].osc3Amount;
-		if (jsonfile[i].osc3Detune != undefined){
+		if (jsonfile[i].osc3Octave != undefined){
 			sounds[i].osc3DetuneCoarse.value = jsonfile[i].osc3Octave * 12;
-			sounds[i].osc3DetuneFine.value = jsonfile[i].osc3Detune;
+			sounds[i].osc3DetuneFine.value = 0;
 		} else {
 			sounds[i].osc3DetuneCoarse.value = jsonfile[i].osc3DetuneCoarse;
 			sounds[i].osc3DetuneFine.value = jsonfile[i].osc3DetuneFine;
@@ -736,16 +736,17 @@ function loadPreset(jsonfile){
 	}
 	if (jsonfile.osc2Detune != undefined){
 		sounds[selectedSound].osc2DetuneFine.value = jsonfile.osc2Detune;
-		sounds[selectedSound].osc2DetuneCoarse.value = jsonfile.osc2Octave * 12;
+		sounds[selectedSound].osc2DetuneCoarse.value = (jsonfile.osc2Octave * 12) || 0;
 	} else {
 		sounds[selectedSound].osc2DetuneCoarse.value = jsonfile.osc2DetuneCoarse;
 		sounds[selectedSound].osc2DetuneFine.value = jsonfile.osc2DetuneFine;
 	}	
 	
 	if (jsonfile.osc3Amount != undefined) sounds[selectedSound].osc3Amount.value = jsonfile.osc3Amount;
-	if (jsonfile.osc3Detune != undefined){
-		sounds[selectedSound].osc3DetuneFine.value = jsonfile.osc3Detune;
-		sounds[selectedSound].osc2DetuneCoarse.value = jsonfile.osc3Octave * 12;
+	
+	if (jsonfile.osc3Octave != undefined){
+		sounds[selectedSound].osc3DetuneFine.value = 0;
+		sounds[selectedSound].osc3DetuneCoarse.value = (jsonfile.osc3Octave * 12) || 0;
 	} else {
 		sounds[selectedSound].osc3DetuneCoarse.value = jsonfile.osc3DetuneCoarse;
 		sounds[selectedSound].osc3DetuneFine.value = jsonfile.osc3DetuneFine;
