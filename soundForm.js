@@ -32,6 +32,7 @@ function SoundForm(){
 		patternForm.render = true;
 		soundForm.render = true;
 	});
+	this.nameText.style('font-family', 'Montserrat');
 	this.dev;
 	this.formtop;
 	this.threeheight;
@@ -85,11 +86,13 @@ function SoundForm(){
 		soundForm.presets.elt.blur();
 
 	});
+	this.presets.style('font-family', 'Montserrat');
 
 	this.envelopeSelect = createSelect().hide();
 	this.envelopeSelect.option("Sound");
 	this.envelopeSelect.option("Filter");
 	this.envelopeSelect.changed(()=>{this.render = true});
+	this.envelopeSelect.style('font-family', 'Montserrat');
 
 	this.init = function(){}
 

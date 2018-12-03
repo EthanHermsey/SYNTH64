@@ -47,6 +47,7 @@ function PatternForm(){
 		currentPattern = Number(this.patternbox.selected());
 		patternForm.render = true;
 	});
+	this.patternbox.style('font-family', 'Montserrat');
 
 	this.addbutton = createButton('+');
 	this.addbutton.style("font-weight", "bold");
@@ -58,8 +59,10 @@ function PatternForm(){
 			patternForm.render = true;
 		}
 	});
+	this.addbutton.style('font-family', 'Montserrat');
 
 	this.patternName = createInput().hide();
+	this.patternName.style('font-family', 'Montserrat');
 	
 	this.patternmenuButton = new FunctionButtonObject(0,0,0,"Pattern menu");
 	

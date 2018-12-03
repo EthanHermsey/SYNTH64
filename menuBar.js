@@ -27,7 +27,7 @@ function MenuBar(){
 	this.stop;
 	this.saveButton;
 	this.loadButton;
-	this.onlineButton;
+	this.demoButton;
 	this.midiselect;
 	this.quickGuideButton;
 
@@ -174,7 +174,8 @@ function MenuBar(){
 	 			window.onbeforeunload = "";
 	 		}
 			
-	 	});
+		 });
+		this.saveButton.style('font-family', 'Montserrat');
 
 	 	this.fileInput = createFileInput(function(file){
 	 		DropFile(file);
@@ -183,16 +184,19 @@ function MenuBar(){
 	 	this.loadButton = createButton('Load') //.hide();
 	 	this.loadButton.mousePressed(()=>{
 	 		this.fileInput.elt.click();
-	 	})
+		 })
+		this.loadButton.style('font-family', 'Montserrat');
 
-	 	this.onlineButton = createButton("Demo") //.hide();
-	 	this.onlineButton.mousePressed(function(){
+	 	this.demoButton = createButton("Demo") //.hide();
+	 	this.demoButton.mousePressed(function(){
 	 		if (confirm("Load demo project? Current project will be lost.")) loadJSON('res/demo.txt', LoadProject);
-	 	});
+		 });
+		this.demoButton.style('font-family', 'Montserrat');
 
 
 	 	this.midiselect = createSelect();
-	 	this.midiselect.option("MIDI Devices", -1);
+		this.midiselect.option("MIDI Devices", -1);
+		this.midiselect.style('font-family', 'Montserrat');
 		this.midiselect.input(function(){ 
 
 			WebMidi.inputs.forEach((input)=>{input.removeListener()});
@@ -259,8 +263,8 @@ function MenuBar(){
 		this.loadButton.size(this.menuButton.pos.x + this.menuButton.width, insideTop * 0.3);
 		this.loadButton.position(5, 3 + insideTop * 0.3);	
 
-		this.onlineButton.size(this.menuButton.pos.x + this.menuButton.width, insideTop * 0.3);
-		this.onlineButton.position(5, 3 + insideTop * 0.6);	
+		this.demoButton.size(this.menuButton.pos.x + this.menuButton.width, insideTop * 0.3);
+		this.demoButton.position(5, 3 + insideTop * 0.6);	
 
 		this.outputVisualizer.pos.set(this.menuButton.pos.x + this.menuButton.width + 10, 1);
 		this.outputVisualizer.width = width / 10;
