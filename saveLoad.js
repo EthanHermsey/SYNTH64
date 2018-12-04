@@ -748,8 +748,8 @@ function loadPreset(jsonfile){
 		sounds[selectedSound].osc3DetuneFine.value = 0;
 		sounds[selectedSound].osc3DetuneCoarse.value = (jsonfile.osc3Octave * 12) || 0;
 	} else {
-		sounds[selectedSound].osc3DetuneCoarse.value = jsonfile.osc3DetuneCoarse;
-		sounds[selectedSound].osc3DetuneFine.value = jsonfile.osc3DetuneFine;
+		sounds[selectedSound].osc3DetuneCoarse.value = jsonfile.osc3DetuneCoarse || 0;
+		sounds[selectedSound].osc3DetuneFine.value = jsonfile.osc3DetuneFine || 0;
 	}
 
 	
