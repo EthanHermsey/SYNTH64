@@ -399,22 +399,11 @@ class SoundObject{
 
 			if (this.arpSelector.valueRandom == true){
 				
-				if (!this.randomArpLength) this.randomArpLength = floor( random(this.arp.length) );
 				
-
-
+				this.arpCounter = floor( random(this.arp.length));
 				var n = this.arp[this.arpCounter] - this.arpBaseOffset ; 
 				
 				this.playNote(n);
-
-				this.arpCounter += this.arpSelector.direction;
-				if (this.arpSelector.direction > 0 && this.arpCounter >= this.randomArpLength){
-					this.randomArpLength = floor( random(this.arp.length) );
-					this.arpCounter = 0;
-				} else if (this.arpSelector.direction < 0 && this.arpCounter <= this.arp.length - this.randomArpLength){
-					this.randomArpLength = floor( random(this.arp.length) );
-					this.arpCounter = this.arp.length -1;
-				}
 				
 			}else{
 
@@ -457,21 +446,10 @@ class SoundObject{
 				
 			if (this.arpSelector.valueRandom == true){
 				
-				if (!this.randomArpLength) this.randomArpLength = floor( random(this.arp.length) );
+				this.arpCounter = floor( random(this.arp.length));
+				var n = this.arp[this.arpCounter] - this.arpBaseOffset ; 
 				
-
-				this.playNote(this.arp[this.arpCounter] - this.arpBaseOffset);
-
-				
-				this.arpCounter += this.arpSelector.direction;
-				if (this.arpSelector.direction > 0 && this.arpCounter >= this.randomArpLength){
-					this.randomArpLength = floor( random(this.arp.length) );
-					this.arpCounter = 0;
-				} else if (this.arpSelector.direction < 0 && this.arpCounter <= this.arp.length - this.randomArpLength){
-					this.randomArpLength = floor( random(this.arp.length) );
-					this.arpCounter = this.arp.length -1;
-				}
-				
+				this.playNote(n);				
 				
 			}else{
 
